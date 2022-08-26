@@ -1,0 +1,1 @@
+This project will solve and document the responses to Danny Ma's SQL case studies over the course of 8 weeks (realistically 2 weeks)
