@@ -1,1 +1,0 @@
-# danny-ma-sql-challenge
