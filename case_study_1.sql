@@ -69,5 +69,10 @@ FROM
  WHERE sales_rank = 1;
 
  -- QUESTION 4 answer
-
+SELECT product_name, COUNT(*) AS no_of_times_purchased
+FROM dannys_diner.sales
+INNER JOIN dannys_diner.menu USING (product_id)
+GROUP BY product_name
+ORDER BY no_of_times_purchased DESC
+LIMIT 1
  
