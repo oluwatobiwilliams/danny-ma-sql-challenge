@@ -74,5 +74,99 @@ FROM dannys_diner.sales
 INNER JOIN dannys_diner.menu USING (product_id)
 GROUP BY product_name
 ORDER BY no_of_times_purchased DESC
-LIMIT 1
- 
+LIMIT 1;
+
+-- QUESTION 5 answer
+WITH products_purchased AS (
+  SELECT customer_id, product_name, COUNT(*) AS no_of_times_purchased
+  FROM dannys_diner.sales
+  INNER JOIN dannys_diner.menu USING (product_id)
+  GROUP BY customer_id, product_name
+  ORDER BY customer_id, no_of_times_purchased DESC
+)
+SELECT customer_id, product_name
+FROM 
+(
+  SELECT p.*,
+  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY no_of_times_purchased DESC) AS rank_item
+  FROM products_purchased p
+) AS temp
+WHERE rank_item = 1; 
+
+-- QUESTION 6 answer
+SELECT customer_id, product_name
+FROM (
+  SELECT  members.*, product_name,
+  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date ASC) AS row_num
+  FROM(
+    SELECT s.customer_id, s.product_id, order_date, join_date
+    FROM dannys_diner.sales s
+    INNER JOIN dannys_diner.members m
+    ON s.customer_id = m.customer_id 
+    AND s.order_date > m.join_date
+  ) AS members
+  INNER JOIN dannys_diner.menu USING (product_id)
+) AS customers
+WHERE row_num = 1;
+
+-- QUESTION 7 answer
+SELECT customer_id, product_name
+FROM (
+  SELECT  members.*, product_name,
+  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS row_num
+  FROM(
+    SELECT s.customer_id, s.product_id, order_date, join_date
+    FROM dannys_diner.sales s
+    INNER JOIN dannys_diner.members m
+    ON s.customer_id = m.customer_id 
+    AND s.order_date < m.join_date
+  ) AS members
+  INNER JOIN dannys_diner.menu USING (product_id)
+) AS customers
+WHERE row_num = 1;
+
+-- QUESTION 8 answer
+WITH members AS (
+  SELECT s.customer_id, s.product_id, price
+  FROM dannys_diner.sales s
+  INNER JOIN dannys_diner.members m
+  ON s.customer_id = m.customer_id 
+  AND s.order_date < m.join_date
+  INNER JOIN dannys_diner.menu e USING (product_id)
+)
+SELECT customer_id, COUNT(*) AS no_of_items,
+SUM(price) AS total_amount
+FROM members
+GROUP BY customer_id;
+
+-- QUESTION 9 answer
+WITH points AS (
+  SELECT customer_id, s.product_id, price,
+  CASE WHEN product_id = 1 THEN price*20 ELSE price*10 
+      END AS points
+  FROM dannys_diner.sales s
+  INNER JOIN dannys_diner.menu m USING (product_id)
+)
+SELECT customer_id, SUM(points) AS total_points
+FROM points
+GROUP BY customer_id
+ORDER BY total_points DESC;
+
+-- QUESTION 10 answer
+WITH members AS (
+SELECT s.customer_id, s.product_id, order_date, join_date
+    FROM dannys_diner.sales s
+    INNER JOIN dannys_diner.members m
+    ON s.customer_id = m.customer_id 
+    AND s.order_date >= m.join_date
+)
+SELECT customer_id,
+SUM(CASE 
+    WHEN order_date < join_date+INTERVAL '7 day' THEN price*20 
+    WHEN product_id=1 THEN price*20
+    ELSE price*10
+	END) AS points
+FROM members
+INNER JOIN dannys_diner.menu USING (product_id)
+WHERE order_date <= '2021-01-31'
+GROUP BY 1
