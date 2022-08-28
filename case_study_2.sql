@@ -58,3 +58,6 @@ COALESCE(SUM(CASE WHEN pizza_id = 1 THEN 1 END),0) AS meatlovers,
 COALESCE(SUM(CASE WHEN pizza_id = 2 THEN 1 END),0) AS vegetarian
 FROM pizza_runner.customer_orders
 GROUP BY customer_id;
+
+-- A.6
+
