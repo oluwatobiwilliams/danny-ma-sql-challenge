@@ -60,4 +60,4 @@ FROM pizza_runner.customer_orders
 GROUP BY customer_id;
 
 -- A.6
-
+SELECT * FROM temp_table;
