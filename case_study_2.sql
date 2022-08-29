@@ -74,3 +74,28 @@ WHERE order_id IN (
 )
 GROUP BY order_id
 ORDER BY pizzas_delivered DESC;
+
+-- A.7
+WITH cleaned_orders AS (
+  SELECT order_id, customer_id, pizza_id,
+  CASE WHEN exclusions IN ('null','') THEN null ELSE exclusions END AS exclusions,
+  CASE WHEN extras IN ('null','') THEN null ELSE extras END AS extras,
+  order_time
+  FROM pizza_runner.customer_orders
+),
+runner_orders AS (
+  SELECT order_id, runner_id, pickup_time, distance, duration,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+  	ELSE 1 END AS cancellation
+  FROM pizza_runner.runner_orders
+)
+SELECT customer_id, 
+COUNT(CASE WHEN change = 0 THEN 0 END) AS pizza_no_change,
+COUNT(CASE WHEN change = 1 THEN 1 END) AS pizza_with_change
+FROM (
+  	SELECT c.*,
+		CASE WHEN exclusions IS NULL AND extras IS NULL THEN 0 ELSE 1 END AS change
+	FROM cleaned_orders AS c
+	WHERE order_id IN (SELECT order_id FROM runner_orders WHERE cancellation = 0)
+) AS pizza_changes
+GROUP BY 1;
