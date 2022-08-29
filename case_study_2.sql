@@ -60,4 +60,17 @@ FROM pizza_runner.customer_orders
 GROUP BY customer_id;
 
 -- A.6
-SELECT * FROM temp_table;
+SELECT order_id, COUNT(*) AS pizzas_delivered 
+FROM pizza_runner.customer_orders
+WHERE order_id IN (
+	SELECT DISTINCT order_id 
+  	FROM (
+  		SELECT order_id, runner_id, pickup_time, distance, duration,
+ 			CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+    		ELSE 1 END AS cancellation
+  		FROM pizza_runner.runner_orders
+	) AS runner_orders
+	WHERE cancellation = 0
+)
+GROUP BY order_id
+ORDER BY pizzas_delivered DESC;
