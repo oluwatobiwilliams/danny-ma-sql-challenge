@@ -152,3 +152,10 @@ B. Runner and Customer Experience
 */
 
 -- B.1
+SELECT 
+   CONCAT('Week ', to_char(registration_date, 'WW')) AS registration_week,  -- the 'WW' argument returns the week number of year(the first week starts on the first day of the year)
+   COUNT(runner_id) AS runners_registered
+FROM pizza_runner.runners
+     AS runner_sign_date
+GROUP BY 1
+ORDER BY 1;
