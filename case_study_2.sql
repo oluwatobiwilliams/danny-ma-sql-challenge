@@ -159,3 +159,62 @@ FROM pizza_runner.runners
      AS runner_sign_date
 GROUP BY 1
 ORDER BY 1;
+
+-- B.2
+WITH runner_orders AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  distance, 
+  duration,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+)
+SELECT runner_id, ROUND(AVG(time_taken_seconds/60.0)) AS avg_minutes
+FROM(
+  SELECT order_id, runner_id, pickup_time, order_time,
+  EXTRACT (epoch FROM (pickup_time - order_time)) AS time_taken_seconds
+  FROM runner_orders
+  LEFT JOIN (
+      SELECT DISTINCT order_id, order_time
+      FROM pizza_runner.customer_orders
+          ) AS co
+  USING (order_id)
+) AS runner_time
+GROUP BY runner_id;
+
+-- B.3
+-- There exists a positive relationship b/w no of pizzas ordered and the time taken to prepare
+WITH runner_orders AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  distance, 
+  duration,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+),
+pizza_details AS (
+  SELECT order_id, pizza_ordered, runner_id, pickup_time, order_time,
+  EXTRACT (epoch FROM (pickup_time - order_time)) AS time_taken_seconds
+  FROM runner_orders
+  LEFT JOIN (
+    SELECT order_id, 
+    COUNT(*) AS pizza_ordered,
+    MIN(order_time) AS order_time
+    FROM pizza_runner.customer_orders
+    GROUP BY 1
+     ) AS co USING (order_id)
+)
+SELECT pizza_ordered, AVG(time_taken_seconds) AS avg_seconds
+FROM pizza_details
+GROUP BY 1
+ORDER BY 1
