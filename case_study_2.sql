@@ -217,4 +217,122 @@ pizza_details AS (
 SELECT pizza_ordered, AVG(time_taken_seconds) AS avg_seconds
 FROM pizza_details
 GROUP BY 1
-ORDER BY 1
+ORDER BY 1;
+
+-- B.4
+WITH runner_orders AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  CASE WHEN distance IN ('null', '') THEN NULL 
+  	ELSE TRIM(SPLIT_PART(distance,'km',1)) 
+  	END AS distance, 
+  duration,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+),
+pizza_details AS (
+  SELECT order_id, customer_id, pizza_ordered, runner_id, 
+  pickup_time, 
+  distance, duration,
+  order_time,
+  EXTRACT (epoch FROM (pickup_time - order_time)) AS time_taken_seconds,
+  cancellation
+  FROM runner_orders
+  LEFT JOIN (
+    SELECT order_id, customer_id, 
+    COUNT(*) AS pizza_ordered,
+    MIN(order_time) AS order_time
+    FROM pizza_runner.customer_orders
+    GROUP BY 1, 2
+    ) AS co USING (order_id)
+)
+SELECT customer_id, AVG(distance::FLOAT) AS avg_km
+FROM pizza_details
+GROUP BY customer_id;
+
+-- B.5
+WITH runner_orders AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  CASE WHEN distance IN ('null', '') THEN NULL 
+  	ELSE TRIM(SPLIT_PART(distance,'km',1)) 
+  	END AS distance_km, 
+  CASE WHEN duration IN ('null','') THEN NULL 
+	ELSE TRIM(SPLIT_PART(duration,'min',1))::INTEGER 
+  	END AS duration_mins,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+)
+SELECT  MAX(duration_mins) AS longest_delivery,
+MIN(duration_mins) AS shortest_delivery,
+MAX(duration_mins) - MIN(duration_mins) AS difference
+FROM runner_orders;
+
+-- B.6
+-- Avg speed (km/hr) tends to increase for each delivered order after the first delivery
+WITH runner_orders AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  CASE WHEN distance IN ('null', '') THEN NULL 
+  	ELSE TRIM(SPLIT_PART(distance,'km',1)) 
+  	END AS distance_km, 
+  CASE WHEN duration IN ('null','') THEN NULL 
+	ELSE TRIM(SPLIT_PART(duration,'min',1))::INTEGER 
+  	END AS duration_mins,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+)
+SELECT runner_id,
+order_id,
+distance_km::FLOAT/(duration_mins/60.0) AS km_per_hr
+FROM runner_orders
+WHERE cancellation = 0
+ORDER BY runner_id;
+
+-- B.7
+WITH runner_orders AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  CASE WHEN distance IN ('null', '') THEN NULL 
+  	ELSE TRIM(SPLIT_PART(distance,'km',1)) 
+  	END AS distance_km, 
+  CASE WHEN duration IN ('null','') THEN NULL 
+	ELSE TRIM(SPLIT_PART(duration,'min',1))::INTEGER 
+  	END AS duration_mins,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+)
+SELECT runner_id,
+COUNT(CASE WHEN cancellation = 0 THEN cancellation END) AS successful,
+COUNT(*) AS orders,
+COUNT(CASE WHEN cancellation = 0 THEN cancellation END)/COUNT(*)::FLOAT AS percent_successful
+FROM runner_orders
+GROUP BY 1;
+
+
+
+
+
+
+
+
