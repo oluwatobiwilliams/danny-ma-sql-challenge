@@ -329,9 +329,57 @@ COUNT(CASE WHEN cancellation = 0 THEN cancellation END)/COUNT(*)::FLOAT AS perce
 FROM runner_orders
 GROUP BY 1;
 
+/*
+C. Ingredient Optimisation
 
+1. What are the standard ingredients for each pizza?
+2. What was the most commonly added extra?
+3. What was the most common exclusion?
+4. Generate an order item for each record in the customers_orders table in the format of one of the following:
+Meat Lovers
+Meat Lovers - Exclude Beef
+Meat Lovers - Extra Bacon
+Meat Lovers - Exclude Cheese, Bacon - Extra Mushroom, Peppers
 
+5. Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
+For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
 
+6. What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
+*/
+
+-- C.1
+WITH topping_unnest AS (
+  SELECT pizza_id,
+  UNNEST(STRING_TO_ARRAY(toppings, ', '))::INTEGER AS topping_id
+  FROM pizza_runner.pizza_recipes
+),
+toppings AS (
+  SELECT t.*, topping_name
+  FROM topping_unnest t
+  LEFT JOIN pizza_runner.pizza_toppings USING (topping_id)
+)
+SELECT pizza_id, 
+STRING_AGG (topping_name, ', ') AS ingredients
+FROM toppings
+GROUP BY pizza_id ORDER BY 1;
+
+-- C.2
+WITH orders_extra AS (
+  SELECT order_id, UNNEST(STRING_TO_ARRAY(extras, ', ')) AS extras
+  FROM pizza_runner.customer_orders 
+)
+SELECT topping_name, COUNT(*) AS no_of_times
+FROM (
+  SELECT order_id, 
+  CASE WHEN extras = 'null' THEN NULL ELSE extras END AS extras
+  FROM orders_extra
+) AS temp_table
+INNER JOIN pizza_runner.pizza_toppings p
+ON temp_table.extras::INTEGER = p.topping_id
+WHERE extras IS NOT NULL
+GROUP BY topping_name
+ORDER BY no_of_times DESC
+LIMIT 1;
 
 
 
