@@ -453,5 +453,182 @@ SELECT CONCAT(pizza_name,
 FROM orders o
 LEFT JOIN exclusions_toppings t USING (row_index)
 LEFT JOIN extras_toppings e USING (row_index)
-LEFT JOIN pizza_runner.pizza_names p USING (pizza_id)
+LEFT JOIN pizza_runner.pizza_names p USING (pizza_id);
+
+-- C.5
+WITH orders AS (
+  SELECT *, ROW_NUMBER() OVER () AS row_index
+  FROM pizza_runner.customer_orders
+),
+exclusions AS (
+  SELECT order_id, pizza_id, row_index, topping_name
+  FROM (
+    SELECT * FROM (
+    	SELECT order_id, pizza_id, row_index,
+        UNNEST(STRING_TO_ARRAY(exclusions, ', ')) AS exclusions
+        FROM orders
+    ) AS tmp
+    WHERE exclusions NOT IN ('null' ,'')
+  ) AS temp_table
+  LEFT JOIN pizza_runner.pizza_toppings p
+  ON temp_table.exclusions::INTEGER = p.topping_id
+  
+),
+extras AS (
+  SELECT order_id, pizza_id, row_index, topping_name
+  FROM (
+    SELECT * FROM (
+    	SELECT order_id, pizza_id, row_index,
+        UNNEST(STRING_TO_ARRAY(extras, ', ')) AS extras
+        FROM orders
+    ) AS tmp
+    WHERE extras NOT IN ('null', '')
+  ) AS temp_table
+  LEFT JOIN pizza_runner.pizza_toppings p
+  ON temp_table.extras::INTEGER = p.topping_id
+  
+),
+exclusions_toppings AS (
+  SELECT row_index,
+  pizza_id,
+  topping_name, 
+  CONCAT(row_index,',',topping_name) AS row_index_toppings
+  FROM exclusions
+)
+,
+toppings_unnest AS (
+  SELECT row_index, pizza_id, UNNEST(STRING_TO_ARRAY(toppings, ', ')) AS toppings 
+  FROM orders AS o
+  LEFT JOIN pizza_runner.pizza_recipes USING (pizza_id)
+  ORDER BY row_index
+),
+orders_array AS (
+  SELECT row_index, pizza_id, 
+  CONCAT(row_index,',',topping_name) AS row_index_toppings
+  FROM  toppings_unnest u
+  JOIN pizza_runner.pizza_toppings t
+  ON u.toppings::INTEGER = t.topping_id
+  --GROUP BY row_index
+  ORDER BY row_index
+),
+pizza_ingredients AS (
+  SELECT * FROM (
+    SELECT row_index, pizza_id,
+    SPLIT_PART(row_index_toppings,',',2) AS topping_name
+    FROM orders_array o
+    WHERE row_index_toppings NOT IN (SELECT row_index_toppings FROM exclusions_toppings)
+
+    UNION ALL
+
+    SELECT row_index, pizza_id, topping_name 
+    FROM extras  
+ ) AS pz
+  ORDER BY row_index, pizza_id, topping_name
+  )
+  
+SELECT CONCAT(pizza_name,': ', topping_name) AS ingredient_list
+FROM (
+  SELECT row_index, pizza_id,
+  STRING_AGG(
+    CASE WHEN multiplier = 1 THEN topping_name
+    ELSE CONCAT(multiplier,'x',topping_name) END, ', ') AS topping_name
+  FROM (
+    SELECT row_index, pizza_id, topping_name, COUNT(*) AS multiplier 
+    FROM pizza_ingredients
+    GROUP BY 1, 2, 3
+  ) AS tmp
+  GROUP BY row_index, pizza_id
+) AS tmp
+LEFT JOIN pizza_runner.pizza_names USING (pizza_id)
+ORDER BY row_index;
+
+-- C.6
+WITH delivered_orders AS (
+  SELECT order_id FROM (
+    SELECT order_id,
+  	CASE WHEN cancellation = 'null' THEN 0
+      WHEN cancellation IS NULL THEN 0
+      WHEN cancellation = '' THEN 0
+      ELSE 1 END AS cancellation
+  	FROM pizza_runner.runner_orders
+  ) AS tmp
+  WHERE cancellation = 0
+ ), 
+orders AS (
+  SELECT *, ROW_NUMBER() OVER () AS row_index
+  FROM pizza_runner.customer_orders
+  WHERE order_id IN (SELECT order_id FROM delivered_orders)
+),
+exclusions AS (
+  SELECT order_id, pizza_id, row_index, topping_name
+  FROM (
+    SELECT * FROM (
+    	SELECT order_id, pizza_id, row_index,
+        UNNEST(STRING_TO_ARRAY(exclusions, ', ')) AS exclusions
+        FROM orders
+    ) AS tmp
+    WHERE exclusions NOT IN ('null' ,'')
+  ) AS temp_table
+  LEFT JOIN pizza_runner.pizza_toppings p
+  ON temp_table.exclusions::INTEGER = p.topping_id
+  
+),
+extras AS (
+  SELECT order_id, pizza_id, row_index, topping_name
+  FROM (
+    SELECT * FROM (
+    	SELECT order_id, pizza_id, row_index,
+        UNNEST(STRING_TO_ARRAY(extras, ', ')) AS extras
+        FROM orders
+    ) AS tmp
+    WHERE extras NOT IN ('null', '')
+  ) AS temp_table
+  LEFT JOIN pizza_runner.pizza_toppings p
+  ON temp_table.extras::INTEGER = p.topping_id
+  
+),
+exclusions_toppings AS (
+  SELECT row_index,
+  pizza_id,
+  topping_name, 
+  CONCAT(row_index,',',topping_name) AS row_index_toppings
+  FROM exclusions
+)
+,
+toppings_unnest AS (
+  SELECT row_index, pizza_id, UNNEST(STRING_TO_ARRAY(toppings, ', ')) AS toppings 
+  FROM orders AS o
+  LEFT JOIN pizza_runner.pizza_recipes USING (pizza_id)
+  ORDER BY row_index
+),
+orders_array AS (
+  SELECT row_index, pizza_id, 
+  CONCAT(row_index,',',topping_name) AS row_index_toppings
+  FROM  toppings_unnest u
+  JOIN pizza_runner.pizza_toppings t
+  ON u.toppings::INTEGER = t.topping_id
+  ORDER BY row_index
+),
+pizza_ingredients AS (
+  SELECT * FROM (
+    SELECT row_index, pizza_id,
+    SPLIT_PART(row_index_toppings,',',2) AS topping_name
+    FROM orders_array o
+    WHERE row_index_toppings NOT IN (SELECT row_index_toppings FROM exclusions_toppings)
+
+    UNION ALL
+
+    SELECT row_index, pizza_id, topping_name 
+    FROM extras  
+ ) AS pz
+  ORDER BY row_index, pizza_id, topping_name
+  )
+ 
+ SELECT topping_name, COUNT(*) AS total_quantity 
+ FROM pizza_ingredients
+ GROUP BY topping_name 
+ ORDER BY total_quantity DESC;
+
+
+
 
