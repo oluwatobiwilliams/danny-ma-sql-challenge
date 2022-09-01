@@ -25,7 +25,7 @@ USING (product_id)
 GROUP BY 1;
 
 -- QUESTION 2 answer
-SELECT customer_id, COUNT(DISTINCT order_date) AS no_of_days 
+SELECT customer_id, COUNT(DISTINCT order_date) AS no_of_days
 FROM dannys_diner.sales
 GROUP BY customer_id;
 
@@ -34,7 +34,7 @@ GROUP BY customer_id;
 SELECT customer_id, product_name
 FROM
 (
-  SELECT s.customer_id, 
+  SELECT s.customer_id,
   m.product_name,
   RANK() OVER (PARTITION BY customer_id ORDER BY order_date) AS sales_rank
   FROM dannys_diner.sales AS s
@@ -42,7 +42,7 @@ FROM
   USING (product_id)
 ) AS temp_table
  WHERE sales_rank = 1;
- 
+
  -- version 1 alternative
 WITH first_sales AS (
    SELECT customer_id, MIN(order_date) AS first_date
@@ -59,7 +59,7 @@ ORDER BY 1;
 SELECT customer_id, product_name
 FROM
 (
-  SELECT s.customer_id, 
+  SELECT s.customer_id,
   m.product_name,
   ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date) AS sales_rank
   FROM dannys_diner.sales AS s
@@ -85,13 +85,13 @@ WITH products_purchased AS (
   ORDER BY customer_id, no_of_times_purchased DESC
 )
 SELECT customer_id, product_name
-FROM 
+FROM
 (
   SELECT p.*,
   ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY no_of_times_purchased DESC) AS rank_item
   FROM products_purchased p
 ) AS temp
-WHERE rank_item = 1; 
+WHERE rank_item = 1;
 
 -- QUESTION 6 answer
 SELECT customer_id, product_name
@@ -102,7 +102,7 @@ FROM (
     SELECT s.customer_id, s.product_id, order_date, join_date
     FROM dannys_diner.sales s
     INNER JOIN dannys_diner.members m
-    ON s.customer_id = m.customer_id 
+    ON s.customer_id = m.customer_id
     AND s.order_date > m.join_date
   ) AS members
   INNER JOIN dannys_diner.menu USING (product_id)
@@ -118,7 +118,7 @@ FROM (
     SELECT s.customer_id, s.product_id, order_date, join_date
     FROM dannys_diner.sales s
     INNER JOIN dannys_diner.members m
-    ON s.customer_id = m.customer_id 
+    ON s.customer_id = m.customer_id
     AND s.order_date < m.join_date
   ) AS members
   INNER JOIN dannys_diner.menu USING (product_id)
@@ -130,7 +130,7 @@ WITH members AS (
   SELECT s.customer_id, s.product_id, price
   FROM dannys_diner.sales s
   INNER JOIN dannys_diner.members m
-  ON s.customer_id = m.customer_id 
+  ON s.customer_id = m.customer_id
   AND s.order_date < m.join_date
   INNER JOIN dannys_diner.menu e USING (product_id)
 )
@@ -142,7 +142,7 @@ GROUP BY customer_id;
 -- QUESTION 9 answer
 WITH points AS (
   SELECT customer_id, s.product_id, price,
-  CASE WHEN product_id = 1 THEN price*20 ELSE price*10 
+  CASE WHEN product_id = 1 THEN price*20 ELSE price*10
       END AS points
   FROM dannys_diner.sales s
   INNER JOIN dannys_diner.menu m USING (product_id)
@@ -153,20 +153,45 @@ GROUP BY customer_id
 ORDER BY total_points DESC;
 
 -- QUESTION 10 answer
+-- WITH members AS (
+-- SELECT s.customer_id, s.product_id, order_date, join_date
+--     FROM dannys_diner.sales s
+--     INNER JOIN dannys_diner.members m
+--     ON s.customer_id = m.customer_id
+--     AND s.order_date >= m.join_date
+-- )
+-- SELECT customer_id,
+-- SUM(CASE
+--     WHEN order_date < join_date+INTERVAL '7 day' THEN price*20
+--     WHEN product_id=1 THEN price*20
+--     ELSE price*10
+-- 	END) AS points
+-- FROM members
+-- INNER JOIN dannys_diner.menu USING (product_id)
+-- WHERE order_date <= '2021-01-31'
+-- GROUP BY 1
+
 WITH members AS (
-SELECT s.customer_id, s.product_id, order_date, join_date
+    SELECT
+    customer_id,
+    s.product_id,
+    date_trunc('week', s.order_date) AS order_week,
+    date_trunc('week', m.join_date) AS join_week
     FROM dannys_diner.sales s
-    INNER JOIN dannys_diner.members m
-    ON s.customer_id = m.customer_id 
-    AND s.order_date >= m.join_date
+    JOIN dannys_diner.members m USING(customer_id)
+    WHERE m.join_date <= s.order_date
 )
-SELECT customer_id,
-SUM(CASE 
-    WHEN order_date < join_date+INTERVAL '7 day' THEN price*20 
-    WHEN product_id=1 THEN price*20
-    ELSE price*10
-	END) AS points
-FROM members
-INNER JOIN dannys_diner.menu USING (product_id)
-WHERE order_date <= '2021-01-31'
+SELECT
+customer_id,
+sum(total_point) AS total_point
+FROM (
+    SELECT
+    me.*,
+    price,
+    (price * 20) AS total_point
+    FROM members me
+    JOIN dannys_diner.menu me USING(product_id)
+    WHERE extract(month FROM order_week) = 01
+) as stop
 GROUP BY 1
+
