@@ -381,6 +381,77 @@ GROUP BY topping_name
 ORDER BY no_of_times DESC
 LIMIT 1;
 
+-- C.3
+WITH orders_extra AS (
+  SELECT order_id, UNNEST(STRING_TO_ARRAY(exclusions, ', ')) AS exclusions
+  FROM pizza_runner.customer_orders 
+)
+SELECT topping_name, COUNT(*) AS no_of_times
+FROM (
+  SELECT order_id, 
+  CASE WHEN exclusions = 'null' THEN NULL ELSE exclusions END AS exclusions
+  FROM orders_extra
+) AS temp_table
+INNER JOIN pizza_runner.pizza_toppings p
+ON temp_table.exclusions::INTEGER = p.topping_id
+WHERE exclusions IS NOT NULL
+GROUP BY topping_name
+ORDER BY no_of_times DESC
+LIMIT 1;
 
-
+-- C.4
+WITH orders AS (
+  SELECT *, ROW_NUMBER() OVER () AS row_index
+  FROM pizza_runner.customer_orders
+),
+exclusions AS (
+  SELECT order_id, pizza_id, row_index, topping_name
+  FROM (
+    SELECT * FROM (
+    	SELECT order_id, pizza_id, row_index,
+        UNNEST(STRING_TO_ARRAY(exclusions, ', ')) AS exclusions
+        FROM orders
+    ) AS tmp
+    WHERE exclusions NOT IN ('null' ,'')
+  ) AS temp_table
+  LEFT JOIN pizza_runner.pizza_toppings p
+  ON temp_table.exclusions::INTEGER = p.topping_id
+  
+),
+extras AS (
+  SELECT order_id, pizza_id, row_index, topping_name
+  FROM (
+    SELECT * FROM (
+    	SELECT order_id, pizza_id, row_index,
+        UNNEST(STRING_TO_ARRAY(extras, ', ')) AS extras
+        FROM orders
+    ) AS tmp
+    WHERE extras NOT IN ('null', '')
+  ) AS temp_table
+  LEFT JOIN pizza_runner.pizza_toppings p
+  ON temp_table.extras::INTEGER = p.topping_id
+  
+),
+exclusions_toppings AS (
+  SELECT row_index, 
+  STRING_AGG(topping_name, ', ') AS exclusions 
+  FROM exclusions
+  GROUP BY 1
+),
+extras_toppings AS (
+  SELECT row_index, 
+  STRING_AGG(topping_name, ', ') AS extras 
+  FROM extras
+  GROUP BY 1
+)
+SELECT CONCAT(pizza_name, 
+              CASE WHEN t.exclusions IS NULL THEN '' ELSE ' - Exclude ' END, 
+              t.exclusions,
+             CASE WHEN e.extras IS NULL THEN '' ELSE ' - Exclude ' END,
+              e.extras
+             ) AS pizza_ordered 
+FROM orders o
+LEFT JOIN exclusions_toppings t USING (row_index)
+LEFT JOIN extras_toppings e USING (row_index)
+LEFT JOIN pizza_runner.pizza_names p USING (pizza_id)
 
