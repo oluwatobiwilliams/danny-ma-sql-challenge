@@ -704,3 +704,110 @@ FROM
   WHERE order_id IN (SELECT order_id FROM deliveries WHERE cancellation = 0) 
 ) AS tmp;
 
+-- D.3
+-- pizza_runner.order_ratings table created in schema_casestudy_2.sql
+SELECT * FROM pizza_runner.order_ratings;
+
+-- D.4
+WITH pizza_costs AS (
+SELECT 1::INTEGER AS pizza_id, 12::INTEGER AS amount
+  UNION ALL
+SELECT 2::INTEGER AS pizza_id, 10::INTEGER AS amount
+),
+customer_orders AS (
+  SELECT order_id,
+  	order_time,
+    customer_id,
+    pizza_id,
+    CASE WHEN extras IN ('null', '') THEN NULL  
+    ELSE extras END AS extras
+  FROM pizza_runner.customer_orders
+),
+deliveries AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  CASE WHEN distance IN ('null', '') THEN NULL 
+  	ELSE TRIM(SPLIT_PART(distance,'km',1)) 
+  	END AS distance_km, 
+  CASE WHEN duration IN ('null','') THEN NULL 
+	ELSE TRIM(SPLIT_PART(duration,'min',1))::INTEGER 
+  	END AS duration_mins,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+)
+
+SELECT d.order_id, c.customer_id,  d.runner_id, r.rating, c.order_time, d.pickup_time,
+no_of_pizzas,
+duration_mins,
+EXTRACT(minute FROM (pickup_time - order_time)) AS time_btw_order_pickup_mins,
+distance_km::FLOAT/(duration_mins::INTEGER/60.0) AS km_hr
+FROM deliveries d
+LEFT JOIN (
+  SELECT order_id, customer_id, COUNT(*) AS no_of_pizzas, MIN(order_time) AS order_time
+  FROM customer_orders
+  GROUP BY 1, 2
+) c USING (order_id)
+LEFT JOIN pizza_runner.order_ratings r USING (order_id)
+WHERE cancellation = 0;
+
+--D.5
+WITH pizza_costs AS (
+SELECT 1::INTEGER AS pizza_id, 12::INTEGER AS amount
+  UNION ALL
+SELECT 2::INTEGER AS pizza_id, 10::INTEGER AS amount
+),
+customer_orders AS (
+  SELECT order_id,
+  	order_time,
+    customer_id,
+    pizza_id,
+    CASE WHEN extras IN ('null', '') THEN NULL  
+    ELSE extras END AS extras
+  FROM pizza_runner.customer_orders
+),
+deliveries AS (
+  SELECT order_id, 
+  runner_id, 
+  CASE WHEN pickup_time IN ('null','') THEN NULL
+      ELSE TO_TIMESTAMP(pickup_time,'YYYY-MM-DD HH24:MI:SS') 
+      END AS pickup_time, 
+  CASE WHEN distance IN ('null', '') THEN NULL 
+  	ELSE TRIM(SPLIT_PART(distance,'km',1)) 
+  	END AS distance_km, 
+  CASE WHEN duration IN ('null','') THEN NULL 
+	ELSE TRIM(SPLIT_PART(duration,'min',1))::INTEGER 
+  	END AS duration_mins,
+  CASE WHEN cancellation IN ('null', '') OR cancellation IS NULL THEN 0
+      ELSE 1 
+      END AS cancellation
+  FROM pizza_runner.runner_orders
+)
+
+SELECT SUM(amount) AS revenue, 
+SUM(distance_km::FLOAT*0.30) AS delivery_cost,
+SUM(amount - (distance_km::FLOAT*0.30)) AS gross_profit
+FROM customer_orders
+LEFT JOIN pizza_costs USING (pizza_id)
+LEFT JOIN deliveries USING (order_id)
+WHERE cancellation = 0;
+
+/*
+BONUS
+If Danny wants to expand his range of pizzas 
+- how would this impact the existing data design? 
+Write an INSERT statement to demonstrate what would happen if a new Supreme pizza with all the toppings 
+was added to the Pizza Runner menu?
+*/
+
+INSERT INTO pizza_runner.pizza_names
+VALUES
+	(3, 'Supreme');
+
+    
+SELECT * FROM pizza_runner.pizza_names;
+-- Other tables to be updated will be pizza_recipes, and potentially the pizza_costs if it's a materialised table 
