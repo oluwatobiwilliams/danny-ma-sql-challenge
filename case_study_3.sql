@@ -84,3 +84,61 @@ FROM (
   FROM subscribers
 ) tmp;
 
+-- B.5 v2 using the LEAD function
+SELECT churned_customers,
+total_customers,
+ROUND(churned_customers/total_customers::FLOAT*100) AS percent_churned_after_trial
+FROM (
+  SELECT 
+  COUNT(CASE WHEN plan_id = 0 AND lead_plan = 4 THEN 1 END) AS churned_customers,
+  COUNT(DISTINCT customer_id) AS total_customers
+  FROM (
+    SELECT *,
+    LEAD(plan_id) OVER (PARTITION BY customer_id ORDER BY start_date) AS lead_plan
+    FROM foodie_fi.subscriptions
+    ORDER BY customer_id
+  ) AS tmp
+) AS tmp;
+
+-- B.6
+SELECT lead_plan, no_of_customers,
+ROUND(no_of_customers::NUMERIC/SUM(no_of_customers) OVER ()*100,1) AS percent_customer_plan
+FROM (
+  SELECT lead_plan, 
+  COUNT(*) AS no_of_customers
+  FROM (
+      SELECT *,
+      LEAD(plan_id) OVER (PARTITION BY customer_id ORDER BY start_date) AS lead_plan
+      FROM foodie_fi.subscriptions	
+    ) AS tmp
+  WHERE plan_id = 0
+  GROUP BY lead_plan
+  ORDER BY lead_plan ASC
+  ) tmp;
+
+  -- B.7
+WITH subscriptions AS (
+SELECT *, 
+  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY start_date) AS row_num
+  FROM foodie_fi.subscriptions
+  WHERE start_date <= '2020-12-31'
+),
+max_row_per_customer AS (
+	SELECT customer_id, MAX(row_num) AS max_row
+  	FROM subscriptions
+  	GROUP BY customer_id
+)
+SELECT plan_id, 
+no_of_customers,
+ROUND(no_of_customers::NUMERIC/SUM(no_of_customers) OVER ()*100,1) AS percent_breakdown
+FROM (
+  SELECT plan_id, 
+  COUNT(*) AS no_of_customers
+  FROM (
+    SELECT * 
+    FROM subscriptions s
+    JOIN max_row_per_customer m
+    ON s.customer_id = m.customer_id AND s.row_num = m.max_row
+  ) tmp
+  GROUP BY plan_id
+) tmp;
