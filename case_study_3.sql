@@ -53,22 +53,15 @@ GROUP BY plan_name
 ORDER BY no_of_events DESC;
 
 -- B.4
-WITH churned_customers AS (
-  SELECT '1'::VARCHAR AS customer_state, 
-  COUNT(DISTINCT customer_id) AS churned_count
+SELECT churned_customers, 
+total_customers,
+ROUND(churned_customers/total_customers::NUMERIC*100,1) AS percent_churned
+FROM (
+SELECT 
+  COUNT (CASE WHEN plan_id = 4 THEN 1 END) AS churned_customers,
+  COUNT (CASE WHEN plan_id = 0 THEN 1 END) AS total_customers
   FROM foodie_fi.subscriptions
-  WHERE plan_id = 4
-),
-total_customers AS (
-  SELECT '1'::VARCHAR AS customer_state,
-  COUNT(DISTINCT customer_id) AS total_count
-  FROM foodie_fi.subscriptions
-)
-SELECT churned_count, 
-total_count,
-churned_count/total_count::FLOAT*100 AS percentage_churn
-FROM churned_customers
-JOIN total_customers USING (customer_state);
+) AS tmp;
 
 -- B.5
 WITH subscribers AS (
