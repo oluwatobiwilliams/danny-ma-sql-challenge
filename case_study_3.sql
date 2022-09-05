@@ -142,3 +142,72 @@ FROM (
   ) tmp
   GROUP BY plan_id
 ) tmp;
+
+-- B.8
+SELECT COUNT (DISTINCT customer_id)
+FROM foodie_fi.subscriptions
+WHERE plan_id = 3 AND EXTRACT(year FROM start_date) = 2020;
+
+-- B.9
+SELECT ROUND(AVG(annual.start_date - trial.start_date),1) AS avg_days
+FROM foodie_fi.subscriptions AS trial
+JOIN foodie_fi.subscriptions AS annual USING (customer_id)
+WHERE trial.plan_id = 0 AND annual.plan_id = 3;
+
+-- B.10
+WITH customer_upgrade AS (
+SELECT trial.customer_id, 
+  trial.start_date AS trial, 
+  annual.start_date AS annual,
+  annual.start_date - trial.start_date AS date_interval
+FROM foodie_fi.subscriptions AS trial
+JOIN foodie_fi.subscriptions AS annual USING (customer_id)
+  WHERE trial.plan_id = 0 AND annual.plan_id = 3
+)
+SELECT SPLIT_PART(interval_group, ' ',2) AS interval_days, 
+ROUND(AVG(date_interval),1) AS avg_days,
+COUNT(*) AS no_of_customers
+FROM
+(
+  SELECT *,
+  CASE WHEN date_interval BETWEEN 0 AND 30 THEN '1 0-30'
+      WHEN date_interval BETWEEN 31 AND 60 THEN '2 31-60'
+      WHEN date_interval BETWEEN 61 AND 90 THEN '3 61-90'
+      WHEN date_interval BETWEEN 91 AND 120 THEN '4 91-120'
+      WHEN date_interval BETWEEN 121 AND 150 THEN '5 121-150'
+      WHEN date_interval BETWEEN 151 AND 180 THEN '6 151-180'
+      WHEN date_interval > 180 THEN '7 181+' END AS interval_group
+  FROM customer_upgrade
+) tmp
+GROUP BY interval_group
+ORDER BY interval_group;
+
+-- B.11
+WITH customer_downgrade AS (
+SELECT pro.customer_id, 
+  pro.start_date AS pro_date,
+  pro.plan_id,
+  basic.start_date AS basic_date,
+  basic.plan_id
+FROM foodie_fi.subscriptions AS pro
+JOIN foodie_fi.subscriptions AS basic USING (customer_id)
+  WHERE pro.plan_id = 2 AND basic.plan_id = 1 
+  AND pro.start_date < basic.start_date
+  AND EXTRACT(year FROM basic.start_date) = 2020
+)
+SELECT * FROM customer_downgrade;
+
+-- B.11 version 2
+WITH base_table AS (
+  SELECT customer_id, STRING_AGG(plan_id::TEXT, ', ') AS customer_journey
+  FROM foodie_fi.subscriptions
+  WHERE EXTRACT(year FROM start_date) = 2020
+  GROUP BY customer_id
+)
+SELECT * FROM base_table
+WHERE customer_journey LIKE '%2, 1%';
+
+
+
+
+
