@@ -208,6 +208,34 @@ SELECT * FROM base_table
 WHERE customer_journey LIKE '%2, 1%';
 
 
+/*
+The Foodie-Fi team wants you to create a new payments table for the year 2020 that includes amounts paid by each customer in the subscriptions table with the following requirements:
 
+1. monthly payments always occur on the same day of month as the original start_date of any monthly paid plan
+2. upgrades from basic to monthly or pro plans are reduced by the current paid amount in that month and start immediately
+3. upgrades from pro monthly to pro annual are paid at the end of the current billing period and also starts at the end of the month period
+4. once a customer churns they will no longer make payments
+*/
+
+-- C answer (in progress)
+
+WITH customers AS (
+SELECT customer_id, 
+  plan_id, 
+  start_date
+--LAG(start_date) OVER (PARTITION BY customer_id ORDER BY start_date) AS next_sub
+FROM foodie_fi.subscriptions
+WHERE plan_id <> 0
+ORDER BY customer_id
+LIMIT 50
+)
+SELECT customer_id, 
+GENERATE_SERIES(
+	MIN(start_date)::timestamp,
+  	MAX(start_date)::timestamp - INTERVAL '1 month',
+  	'1 month') as series1
+FROM customers
+GROUP BY customer_id
+ORDER BY customer_id;
 
 
