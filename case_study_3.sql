@@ -265,6 +265,7 @@ SELECT customer_id, GENERATE_SERIES(
    -- ,max(next_sub) as next_sub
 FROM customers
 GROUP BY 1), 
+
 x3 AS (SELECT customer_id, MAX(series1) AS series1 
        FROM x2 GROUP BY 1),
 
