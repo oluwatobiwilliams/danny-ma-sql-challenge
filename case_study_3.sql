@@ -238,4 +238,50 @@ FROM customers
 GROUP BY customer_id
 ORDER BY customer_id;
 
+-- C update 
+WITH customers AS (
+SELECT customer_id, 
+  plan_id, 
+  start_date
+-- LAG(start_date) OVER (PARTITION BY customer_id ORDER BY start_date) AS next_sub
+FROM foodie_fi.subscriptions
+WHERE plan_id <> 0
+ORDER BY customer_id
+LIMIT 60
+),
+ x1 as (
+SELECT customer_id, GENERATE_SERIES(
+	MIN(start_date)::timestamp,
+  	MAX(start_date)::timestamp - interval '1 month',
+  	'1 month') as series1
+   -- ,max(next_sub) as next_sub
+FROM customers
+GROUP BY 1),
+x2 as (
+SELECT customer_id, GENERATE_SERIES(
+	MIN(start_date)::timestamp,
+  	MAX(start_date)::timestamp,
+  	'1 month') as series1
+   -- ,max(next_sub) as next_sub
+FROM customers
+GROUP BY 1), 
+x3 AS (SELECT customer_id, MAX(series1) AS series1 
+       FROM x2 GROUP BY 1),
+
+x4 AS (SELECT customer_id, MAX(start_date) AS series1 
+       FROM customers GROUP BY 1),
+
+x5 AS (SELECT customer_id, MAX(plan_id) AS plan_id 
+       FROM customers GROUP BY 1),
+
+x6 AS (SELECT customer_id, CASE WHEN plan_id = 4 THEN x3.series1 ELSE x4.series1 END AS series1
+        FROM x5
+        LEFT JOIN x3 AS x3 USING (customer_id)
+        LEFT JOIN x4 AS x4 USING (customer_id))
+
+SELECT * FROM (
+SELECT * FROM x1
+UNION 
+SELECT * FROM x6)tb1 
+ORDER BY 1,2
 
