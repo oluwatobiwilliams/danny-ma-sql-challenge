@@ -219,23 +219,41 @@ The Foodie-Fi team wants you to create a new payments table for the year 2020 th
 
 -- C answer (in progress)
 
-WITH customers AS (
-SELECT customer_id, 
-  plan_id, 
-  start_date
---LAG(start_date) OVER (PARTITION BY customer_id ORDER BY start_date) AS next_sub
+WITH subscriptions AS (
+SELECT *
 FROM foodie_fi.subscriptions
 WHERE plan_id <> 0
-ORDER BY customer_id
-LIMIT 50
-)
-SELECT customer_id, 
-GENERATE_SERIES(
-	MIN(start_date)::timestamp,
-  	MAX(start_date)::timestamp - INTERVAL '1 month',
-  	'1 month') as series1
-FROM customers
+LIMIT 100
+),
+customer_journey AS (
+SELECT customer_id, ARRAY_AGG(plan_id) AS plan_journey, ARRAY_AGG(start_date) AS sub_date
+FROM subscriptions
 GROUP BY customer_id
-ORDER BY customer_id;
+ORDER BY customer_id
+),
+payments AS (
+  SELECT *,
+  GENERATE_SERIES(sub_date[1], COALESCE(sub_date[2],'2020-12-31'), '1 month') AS series
+  FROM customer_journey 
+
+  UNION ALL
+
+  SELECT *,
+  GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3],'2020-12-31'), '1 month') AS series
+  FROM customer_journey
+  ORDER BY customer_id
+  
+)
+
+SELECT * 
+FROM payments
+WHERE plan_journey[1]<>4
+AND EXTRACT(YEAR FROM series) = 2020
+AND customer_id IN (1, 3, 32, 39, 51)
+ORDER BY customer_id, series
+
+
+
+
 
 
