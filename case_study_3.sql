@@ -410,7 +410,7 @@ p3 as (select customer_id, series1
    select *,
  	case when plan_id = 2 and nextid = 1 then price - nextprice   
          when plan_id = 3 and nextid = 1 then price - nextprice 
-         when plan_id = 3 and nextid = 2 then price - nextprice 
+         --when plan_id = 3 and nextid = 2 then price - nextprice 
          end as price2
  from (select *,
  lag (plan_id) over(partition by customer_id order by start_date) as nextid
