@@ -274,7 +274,7 @@ WITH customers AS (
             FROM foodie_fi.subscriptions
             WHERE plan_id <> 0 and EXTRACT(year from start_date) <> 2021
             ORDER BY 1,2
-            LIMIT 100
+           
 ),
 
 x0 as (select customer_id,ARRAY_AGG(plan_id) AS plan_journey  
@@ -398,19 +398,22 @@ p3 as (select customer_id, series1
                from p40
                group by 1,2
                order by 1,2)
-  
+               
 
+
+--use for testing 
 select tb1.customer_id,tb1.series1 as paymentdate  
  
  from (      
  select * from p1
- union all
+ union
  select * from p2
- union all
+ union 
  select * from p3
- union all 
+ union 
  select * from p4)tb1
- order by 1
+ where customer_id = 219
+ order by 1,2
 
 --  select tb1.customer_id,v.price,tb1.series1 as paymentdate  
  
@@ -426,4 +429,4 @@ select tb1.customer_id,tb1.series1 as paymentdate
 --             left join foodie_fi.plans using (plan_id))v using (customer_id)
                      
 
---1,3,32,29,51,21
+--1,3,32,29,51
