@@ -223,7 +223,6 @@ WITH subscriptions AS (
 SELECT *
 FROM foodie_fi.subscriptions
 WHERE plan_id <> 0
-LIMIT 100
 ),
 customer_journey AS (
 SELECT customer_id, ARRAY_AGG(plan_id) AS plan_journey, ARRAY_AGG(start_date) AS sub_date
@@ -232,24 +231,38 @@ GROUP BY customer_id
 ORDER BY customer_id
 ),
 payments AS (
+  
   SELECT *,
   GENERATE_SERIES(sub_date[1], COALESCE(sub_date[2],'2020-12-31'), '1 month') AS series
   FROM customer_journey 
 
   UNION ALL
 
+  SELECT customer_id, plan_journey, sub_date, MIN(series) AS series
+  FROM (
   SELECT *,
-  GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3],'2020-12-31'), '1 month') AS series
-  FROM customer_journey
-  ORDER BY customer_id
+    GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3],'2020-12-31'), '1 month') AS series
+    FROM customer_journey
+    ORDER BY customer_id
+  ) AS tmp
+  WHERE plan_journey IN (ARRAY[1,3,4], ARRAY[1,3], ARRAY[1,2,3], ARRAY[2,3])
+  GROUP BY 1,2,3
+
+  UNION ALL
   
+  SELECT *,
+  GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3], CASE WHEN plan_journey[2]<>4 THEN '2020-12-31'::DATE END), '1 month') AS series
+  FROM customer_journey
+  WHERE plan_journey NOT IN (ARRAY[1,3,4], ARRAY[1,3], ARRAY[1,2,3], ARRAY[2,3])
+  ORDER BY customer_id  
 )
 
 SELECT * 
 FROM payments
 WHERE plan_journey[1]<>4
 AND EXTRACT(YEAR FROM series) = 2020
-AND customer_id IN (1, 3, 32, 39, 51)
+-- test cases AND customer_id IN (21,33,40,910,911,1000,996,206,219 )
+--AND plan_journey @> ARRAY[4]
 ORDER BY customer_id, series
 
 
