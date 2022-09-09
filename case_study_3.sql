@@ -231,17 +231,29 @@ GROUP BY customer_id
 ORDER BY customer_id
 ),
 payments AS (
+  -- handling 1st and 2nd subscribed plans
+  SELECT customer_id, plan_journey, sub_date, MIN(series) AS series 
+  FROM (
+    SELECT *,
+    GENERATE_SERIES(sub_date[1], COALESCE(sub_date[2]-INTERVAL'1 DAY','2020-12-31'), '1 month') AS series
+    FROM customer_journey 
+  ) AS tmp
+  WHERE plan_journey[1]=3
+  GROUP BY 1,2,3
+  
+  UNION ALL
   
   SELECT *,
-  GENERATE_SERIES(sub_date[1], COALESCE(sub_date[2],'2020-12-31'), '1 month') AS series
-  FROM customer_journey 
-
+    GENERATE_SERIES(sub_date[1], COALESCE(sub_date[2]-INTERVAL'1 DAY','2020-12-31'), '1 month') AS series
+  FROM customer_journey
+  WHERE plan_journey[1]<>3
+  
   UNION ALL
-
+ -- handling 2nd and 3rd subscription plans
   SELECT customer_id, plan_journey, sub_date, MIN(series) AS series
   FROM (
   SELECT *,
-    GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3],'2020-12-31'), '1 month') AS series
+    GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3]-INTERVAL'1 DAY','2020-12-31'), '1 month') AS series
     FROM customer_journey
     ORDER BY customer_id
   ) AS tmp
@@ -251,19 +263,33 @@ payments AS (
   UNION ALL
   
   SELECT *,
-  GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3], CASE WHEN plan_journey[2]<>4 THEN '2020-12-31'::DATE END), '1 month') AS series
+  GENERATE_SERIES(sub_date[2], COALESCE(sub_date[3]-INTERVAL'1 DAY', CASE WHEN plan_journey[2]<>4 THEN '2020-12-31'::DATE END), '1 month') AS series
   FROM customer_journey
   WHERE plan_journey NOT IN (ARRAY[1,3,4], ARRAY[1,3], ARRAY[1,2,3], ARRAY[2,3])
   ORDER BY customer_id  
 )
 
-SELECT * 
-FROM payments
-WHERE plan_journey[1]<>4
-AND EXTRACT(YEAR FROM series) = 2020
--- test cases AND customer_id IN (21,33,40,910,911,1000,996,206,219 )
---AND plan_journey @> ARRAY[4]
-ORDER BY customer_id, series
+SELECT customer_id,
+MAX(plan_id) OVER (PARTITION BY customer_id ORDER BY series) AS plan_id,
+MAX(plan_name) OVER (PARTITION BY customer_id ORDER BY series) AS plan_name, 
+series AS payment_date,
+ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY series) AS payment_order
+FROM (
+  SELECT p.customer_id, p.plan_journey, p.sub_date, p.series, s.plan_id 
+  FROM payments p
+  LEFT JOIN subscriptions s ON p.customer_id = s.customer_id
+  AND p.series = s.start_date
+  WHERE plan_journey[1]<>4
+  AND EXTRACT(YEAR FROM series) = 2020
+  AND p.customer_id IN (1,2,13,15,16,18,19,21,33,40,910,911,1000,996,206,219)
+  --AND plan_journey @> ARRAY[4]
+  ORDER BY p.customer_id, series
+) AS tmp
+LEFT JOIN foodie_fi.plans USING (plan_id)
+
+
+
+
 
 
 
