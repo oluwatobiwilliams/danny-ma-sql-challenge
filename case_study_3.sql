@@ -265,55 +265,144 @@ AND EXTRACT(YEAR FROM series) = 2020
 --AND plan_journey @> ARRAY[4]
 ORDER BY customer_id, series
 
+--C answer alternative (in progress)
 
-
-
-
--- C update 
 WITH customers AS (
-SELECT customer_id, 
-  plan_id, 
-  start_date
--- LAG(start_date) OVER (PARTITION BY customer_id ORDER BY start_date) AS next_sub
-FROM foodie_fi.subscriptions
-WHERE plan_id <> 0
-ORDER BY customer_id
-LIMIT 60
+            SELECT customer_id, 
+              plan_id, 
+              start_date
+            FROM foodie_fi.subscriptions
+            WHERE plan_id <> 0 and EXTRACT(year from start_date) <> 2021
+            ORDER BY 1,2
+            LIMIT 100
 ),
- x1 as (
-SELECT customer_id, GENERATE_SERIES(
-	MIN(start_date)::timestamp,
-  	MAX(start_date)::timestamp - interval '1 month',
-  	'1 month') as series1
-   -- ,max(next_sub) as next_sub
-FROM customers
-GROUP BY 1),
-x2 as (
-SELECT customer_id, GENERATE_SERIES(
-	MIN(start_date)::timestamp,
-  	MAX(start_date)::timestamp,
-  	'1 month') as series1
-   -- ,max(next_sub) as next_sub
-FROM customers
-GROUP BY 1), 
 
-x3 AS (SELECT customer_id, MAX(series1) AS series1 
-       FROM x2 GROUP BY 1),
+x0 as (select customer_id,ARRAY_AGG(plan_id) AS plan_journey  
+		from customers
+group by 1
+order by 1),
+plan1 as (
+            select customer_id,plan_journey from x0
+            where plan_journey = array[1]  or plan_journey = array[2]),
+plan1or2 as (
+            select customer_id,plan_journey from x0
+            where  plan_journey = array[1,2]),
+            
+plan123 as (select customer_id,plan_journey from x0
+            where plan_journey = array[1,2,3] or plan_journey = array[1,3]
+            or plan_journey = array[2,3] or plan_journey = array[3]),
+            
+plan1234 as(select customer_id,plan_journey from x0
+            where plan_journey = array[1,2,3,4] or plan_journey = array[1,4]
+            or plan_journey = array[2,4] or plan_journey = array[3,4] 
+             or plan_journey = array[4]  or plan_journey = array[1,2,4] 
+              or plan_journey = array[1,3,4]),
 
-x4 AS (SELECT customer_id, MAX(start_date) AS series1 
-       FROM customers GROUP BY 1),
+p1 as (select customer_id 
+       ,GENERATE_SERIES(MIN(c.start_date)::date,'2020-12-31'::date ,'1 month') as series1
+       from plan1
+	   left join customers c using (customer_id)
+       group by 1),
+        
+p2 as (select customer_id, series1 
+       from( select *, 
+       row_number() over(partition by customer_id order by series1 ) as rankin
+       from(select customer_id 
+             ,GENERATE_SERIES(MIN(c.start_date)::date,
+                              Max(c.start_date)::date ,
+                              '1 month') as series1
 
-x5 AS (SELECT customer_id, MAX(plan_id) AS plan_id 
-       FROM customers GROUP BY 1),
+             from plan1or2
+             left join customers c using (customer_id)
+             group by 1 )x1 )x2 
+             where rankin = 1
+             union 
+             select customer_id, series1 from( select *, 
+             row_number() over(partition by customer_id order by series1 desc ) as rankin
+             from(select customer_id 
+                   ,GENERATE_SERIES(MIN(c.start_date)::date,
+                                    Max(c.start_date)::date ,
+                                    '1 month') as series1
 
-x6 AS (SELECT customer_id, CASE WHEN plan_id = 4 THEN x3.series1 ELSE x4.series1 END AS series1
-        FROM x5
-        LEFT JOIN x3 AS x3 USING (customer_id)
-        LEFT JOIN x4 AS x4 USING (customer_id))
+             from plan1or2
+             left join customers c using (customer_id)
+             group by 1 )x1 )x2 
+             where rankin <> 1
+       
+       union 
+      select customer_id 
+             ,GENERATE_SERIES(Max(c.start_date)::date,'2020-12-31'::date ,'1 month') as series1
+             from plan1or2
+             left join customers c using (customer_id)
+             group by 1 
+             order by 1,2),
+                          
+p3 as (select customer_id, series1
+       from( 
+         
+         select *, 
+       row_number() over(partition by customer_id order by series1 ) as rankin
+       from(select customer_id 
+             ,GENERATE_SERIES(MIN(c.start_date)::date,
+                              Max(c.start_date)::date ,
+                              '1 month') as series1
 
-SELECT * FROM (
-SELECT * FROM x1
-UNION 
-SELECT * FROM x6)tb1 
-ORDER BY 1,2;
+             from plan123
+             left join customers c using (customer_id)
+             group by 1 )x1 )x2 
+              where rankin in (1,2)
+             union 
+             select customer_id, series1 from( select *, 
+             row_number() over(partition by customer_id order by series1 desc ) as rankin
+             from(select customer_id 
+                   ,GENERATE_SERIES(MIN(c.start_date)::date,
+                                    Max(c.start_date)::date ,
+                                    '1 month') as series1
 
+             from plan1or2
+             left join customers c using (customer_id)
+             group by 1 )x1 )x2 
+             where rankin <> 1
+              
+       
+       union 
+      select customer_id 
+             ,Max(c.start_date) as series1
+             from plan123
+             left join customers c using (customer_id)
+             group by 1 
+             order by 1,2),
+             
+p4 as ( select customer_id 
+       ,GENERATE_SERIES(MIN(c.start_date)::date,
+                        Max(c.start_date)::date ,
+                        '1 month') as series1
+       from plan1234
+	   left join customers c using (customer_id)
+       group by 1
+       order by 1,2)
+
+
+select tb1.customer_id,tb1.series1 as paymentdate  
+ 
+ from (      
+ select * from p1
+ union all
+ select * from p2
+ union all
+ select * from p3
+ union all 
+ select * from p4)tb1
+
+--  select tb1.customer_id,v.price,tb1.series1 as paymentdate  
+ 
+--  from (      
+--  select * from p1
+--  union all
+--  select * from p2
+--  union all
+--  select * from p3
+--  union all 
+--  select * from p4)tb1
+--  left join (select * from customers 
+--             left join foodie_fi.plans using (plan_id))v using (customer_id);
