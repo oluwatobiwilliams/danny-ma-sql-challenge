@@ -362,7 +362,7 @@ p3 as (select customer_id, series1
              from plan123
              left join customers c using (customer_id)
              group by 1 )x1 )x2 
-             where rankin <> 1
+             -- where rankin <> 1
               
        
        union 
