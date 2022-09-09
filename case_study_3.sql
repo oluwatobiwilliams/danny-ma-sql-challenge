@@ -271,11 +271,17 @@ WITH customers AS (
             SELECT customer_id, 
               plan_id, 
               start_date
+  			,plan_name
+  			,price
+  			,customer_id:: text || start_date:: text as pkey
             FROM foodie_fi.subscriptions
+  	       left join foodie_fi.plans using (plan_id)
             WHERE plan_id <> 0 and EXTRACT(year from start_date) <> 2021
             ORDER BY 1,2
            
 ),
+
+cust2 as (select * from customers where plan_id <> 4),
 
 x0 as (select customer_id,ARRAY_AGG(plan_id) AS plan_journey  
 		from customers
@@ -397,12 +403,22 @@ p3 as (select customer_id, series1
                                 '1 month') as series1
                from p40
                group by 1,2
-               order by 1,2)
-               
-
-
---use for testing 
-select tb1.customer_id,tb1.series1 as paymentdate  
+               order by 1,2),
+ df as (   select pkey,customer_id,plan_id,start_date,plan_name,
+   case when price2 is null then price else price2 end as price
+   from(
+   select *,
+ 	case when plan_id = 2 and nextid = 1 then price - nextprice   
+         when plan_id = 3 and nextid = 1 then price - nextprice 
+         when plan_id = 3 and nextid = 2 then price - nextprice 
+         end as price2
+ from (select *,
+ lag (plan_id) over(partition by customer_id order by start_date) as nextid
+ ,lag (price) over (partition by customer_id order by start_date) as nextprice
+ from cust2)x1)x2),
+ 
+ df1 as ( select tb1.customer_id,tb1.series1 as paymentdate  
+,tb1.customer_id:: text || tb1.series1:: text as pkey
  
  from (      
  select * from p1
@@ -412,21 +428,40 @@ select tb1.customer_id,tb1.series1 as paymentdate
  select * from p3
  union 
  select * from p4)tb1
- where customer_id = 219
- order by 1,2
 
---  select tb1.customer_id,v.price,tb1.series1 as paymentdate  
+ order by 1,2),
  
---  from (      
---  select * from p1
---  union all
---  select * from p2
---  union all
---  select * from p3
---  union all 
---  select * from p4)tb1
---  left join (select * from customers 
---             left join foodie_fi.plans using (plan_id))v using (customer_id)
-                     
-
---1,3,32,29,51
+  newdf as (select df1.customer_id as id, df1.paymentdate, df1.pkey, df.plan_id, df.start_date
+  ,df.plan_name, df.price
+  from df1
+ left join df on df1.customer_id = df.customer_id and df1.paymentdate = df.start_date
+ order by 1,2),
+ 
+ finaltable as (select *, case when price is null then 
+           (select price 
+            from 
+            newdf as i 
+            where i.id = newdf.id and i.paymentdate < newdf.paymentdate
+            and i.price is not null 
+            order by i.paymentdate limit 1) else price end Pric
+            
+           , case when plan_name is null then 
+           (select plan_name 
+            from 
+            newdf as i 
+            where i.id = newdf.id and i.paymentdate < newdf.paymentdate
+            and i.price is not null 
+            order by i.paymentdate limit 1) else plan_name end Planname
+            
+             , case when plan_id is null then 
+           (select plan_id 
+            from 
+            newdf as i 
+            where i.id = newdf.id and i.paymentdate < newdf.paymentdate
+            and i.price is not null 
+            order by i.paymentdate limit 1) else plan_id end Planid
+ from newdf)
+ 
+ select id as customer_id, Planid as plan_id, Planname as plan_name,paymentdate,Pric as Amount
+ ,row_number() over(partition by id order by paymentdate) as paymentorder
+ from finaltable
