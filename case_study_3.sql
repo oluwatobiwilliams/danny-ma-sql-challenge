@@ -372,16 +372,33 @@ p3 as (select customer_id, series1
              left join customers c using (customer_id)
              group by 1 
              order by 1,2),
+        
+ p40 as (select customer_id, max(start_date) as mindate , b.maxdate
+       from customers 
+       
+      left join (select customer_id, max(start_date) as maxdate 
+                 from customers
+                group by 1)b using (customer_id)
+       where plan_id <>4
+       group by 1,3),
              
-p4 as ( select customer_id 
+ p4 as (select customer_id 
        ,GENERATE_SERIES(MIN(c.start_date)::date,
                         Max(c.start_date)::date ,
                         '1 month') as series1
-       from plan1234
-	   left join customers c using (customer_id)
-       group by 1
-       order by 1,2)
-
+           from plan1234
+         left join customers c using (customer_id)
+                   where c.plan_id <> 4
+                   group by 1
+           union 
+          select customer_id 
+               ,GENERATE_SERIES(mindate::date,
+                                maxdate::date ,
+                                '1 month') as series1
+               from p40
+               group by 1,2
+               order by 1,2)
+  
 
 select tb1.customer_id,tb1.series1 as paymentdate  
  
@@ -393,6 +410,7 @@ select tb1.customer_id,tb1.series1 as paymentdate
  select * from p3
  union all 
  select * from p4)tb1
+ order by 1
 
 --  select tb1.customer_id,v.price,tb1.series1 as paymentdate  
  
@@ -405,4 +423,7 @@ select tb1.customer_id,tb1.series1 as paymentdate
 --  union all 
 --  select * from p4)tb1
 --  left join (select * from customers 
---             left join foodie_fi.plans using (plan_id))v using (customer_id);
+--             left join foodie_fi.plans using (plan_id))v using (customer_id)
+                     
+
+--1,3,32,29,51,21
