@@ -31,3 +31,25 @@ FROM (
   node_id
   FROM data_bank.customer_nodes
 ) AS tmp;
+
+-- A.5
+WITH customer_nodes AS (
+  SELECT *, end_date - start_date AS node_days 
+  FROM (
+    SELECT customer_id, 
+    start_date, 
+    CASE WHEN end_date>CURRENT_DATE THEN '2020-12-31'::DATE ELSE end_date END AS end_date,
+    region_id,
+    node_id
+    FROM data_bank.customer_nodes
+  ) AS tmp
+)
+SELECT region_id, 
+PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY node_days) AS median,
+ROUND(PERCENTILE_CONT(0.8) WITHIN GROUP (ORDER BY node_days)::NUMERIC,1) AS percentile_80,
+ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY node_days)::NUMERIC,1) AS percentile_95
+FROM customer_nodes
+GROUP BY region_id;
+
+
+
