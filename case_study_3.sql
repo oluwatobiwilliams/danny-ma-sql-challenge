@@ -217,19 +217,21 @@ The Foodie-Fi team wants you to create a new payments table for the year 2020 th
 4. once a customer churns they will no longer make payments
 */
 
--- C answer (in progress)
+-- C version 1
 
 WITH subscriptions AS (
 SELECT *
 FROM foodie_fi.subscriptions
 WHERE plan_id <> 0
 ),
+
 customer_journey AS (
 SELECT customer_id, ARRAY_AGG(plan_id) AS plan_journey, ARRAY_AGG(start_date) AS sub_date
 FROM subscriptions
 GROUP BY customer_id
 ORDER BY customer_id
 ),
+
 payments AS (
   -- handling 1st and 2nd subscribed plans
   SELECT customer_id, plan_journey, sub_date, MIN(series) AS series 
@@ -238,7 +240,7 @@ payments AS (
     GENERATE_SERIES(sub_date[1], COALESCE(sub_date[2]-INTERVAL'1 DAY','2020-12-31'), '1 month') AS series
     FROM customer_journey 
   ) AS tmp
-  WHERE plan_journey[1]=3
+  WHERE plan_journey[1]=3 --filter for plan_id 3 as the first plan
   GROUP BY 1,2,3
   
   UNION ALL
@@ -246,7 +248,7 @@ payments AS (
   SELECT *,
     GENERATE_SERIES(sub_date[1], COALESCE(sub_date[2]-INTERVAL'1 DAY','2020-12-31'), '1 month') AS series
   FROM customer_journey
-  WHERE plan_journey[1]<>3
+  WHERE plan_journey[1]<>3 --filter out plan_id 3 as the first plan
   
   UNION ALL
  -- handling 2nd and 3rd subscription plans
@@ -267,25 +269,47 @@ payments AS (
   FROM customer_journey
   WHERE plan_journey NOT IN (ARRAY[1,3,4], ARRAY[1,3], ARRAY[1,2,3], ARRAY[2,3])
   ORDER BY customer_id  
+),
+
+update_payments AS (
+  SELECT *,
+  CASE WHEN plan_journey IN (ARRAY[1,2],ARRAY[1,3]) 
+      AND ARRAY[prev_plan, plan_id] IN (ARRAY[1,2],ARRAY[1,3]) 
+      AND DATE_TRUNC('month',payment_date) = DATE_TRUNC('month',prev_payment_date)
+      THEN amount-lag_amount ELSE amount END AS update_amount
+  FROM (
+    -- generate table with lagged payment amount, and next payment plan
+    SELECT  *,
+    LAG(amount) OVER (PARTITION BY customer_id ORDER BY payment_date)  AS lag_amount,
+    LAG(plan_id) OVER (PARTITION BY customer_id ORDER BY payment_date) AS prev_plan,
+    LAG(payment_date) OVER (PARTITION BY customer_id ORDER BY payment_date) AS prev_payment_date
+    FROM (
+      -- generate joined table with plan_id, plan_name, original_amount and payment_order
+      SELECT customer_id,
+      MAX(plan_id) OVER (PARTITION BY customer_id ORDER BY series) AS plan_id,
+      MAX(plan_name) OVER (PARTITION BY customer_id ORDER BY series) AS plan_name, 
+      series AS payment_date,
+      MAX(price) OVER (PARTITION BY customer_id ORDER BY series)  AS amount,
+      ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY series) AS payment_order,
+      plan_journey, sub_date
+      FROM (
+        SELECT p.customer_id, p.plan_journey, p.sub_date, p.series, s.plan_id 
+        FROM payments p
+        LEFT JOIN subscriptions s ON p.customer_id = s.customer_id
+        AND p.series = s.start_date
+        WHERE plan_journey[1]<>4
+        AND EXTRACT(YEAR FROM series) = 2020
+        --AND plan_journey @> ARRAY[4]
+        ORDER BY p.customer_id, series
+      ) AS tmp
+      LEFT JOIN foodie_fi.plans USING (plan_id)
+    ) AS tmp
+  ) AS tmp
 )
 
-SELECT customer_id,
-MAX(plan_id) OVER (PARTITION BY customer_id ORDER BY series) AS plan_id,
-MAX(plan_name) OVER (PARTITION BY customer_id ORDER BY series) AS plan_name, 
-series AS payment_date,
-ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY series) AS payment_order
-FROM (
-  SELECT p.customer_id, p.plan_journey, p.sub_date, p.series, s.plan_id 
-  FROM payments p
-  LEFT JOIN subscriptions s ON p.customer_id = s.customer_id
-  AND p.series = s.start_date
-  WHERE plan_journey[1]<>4
-  AND EXTRACT(YEAR FROM series) = 2020
-  AND p.customer_id IN (1,2,13,15,16,18,19,21,33,40,910,911,1000,996,206,219)
-  --AND plan_journey @> ARRAY[4]
-  ORDER BY p.customer_id, series
-) AS tmp
-LEFT JOIN foodie_fi.plans USING (plan_id)
+SELECT customer_id, plan_id, plan_name, payment_date, update_amount AS amount, payment_order
+FROM update_payments
+--WHERE customer_id IN (1,2,13,15,16,18,19,21,33,40,910,911,1000,996,206,219)
 
 
 
