@@ -1,4 +1,5 @@
 This project will solve and document the responses to Danny Ma's SQL case studies over the course of 8 weeks (realistically 2 weeks)
+Feel free to join our study group on WhatsApp- https://chat.whatsapp.com/H13DoPOFz8s06AaJxJP6YW
 
 To follow along, the database and code editor for the case studies can be found here:
 
