@@ -281,35 +281,42 @@ WITH customers AS (
            
 ),
 
+-- This code fetch all customer without plan id 4
 cust2 as (select * from customers where plan_id <> 4),
 
+-- This code create an array aggregrate from planid
 x0 as (select customer_id,ARRAY_AGG(plan_id) AS plan_journey  
 		from customers
 group by 1
 order by 1),
+
+ -- This code focus on on customers with single plan journey of 1 or 2 
 plan1 as (
             select customer_id,plan_journey from x0
             where plan_journey = array[1]  or plan_journey = array[2]),
+ -- This code focus  on customers with plan journey 1,2
 plan1or2 as (
             select customer_id,plan_journey from x0
             where  plan_journey = array[1,2]),
-            
+ -- This code focus on on customers with plan journey 1,2,3            
 plan123 as (select customer_id,plan_journey from x0
             where plan_journey = array[1,2,3] or plan_journey = array[1,3]
             or plan_journey = array[2,3] or plan_journey = array[3]),
-            
+ -- This code focus on customers with plan journey 1,2,3,4             
 plan1234 as(select customer_id,plan_journey from x0
             where plan_journey = array[1,2,3,4] or plan_journey = array[1,4]
             or plan_journey = array[2,4] or plan_journey = array[3,4] 
              or plan_journey = array[4]  or plan_journey = array[1,2,4] 
               or plan_journey = array[1,3,4]),
-
+              
+-- This code generate date for customer with a single plan journey of 1 or 2
 p1 as (select customer_id 
        ,GENERATE_SERIES(MIN(c.start_date)::date,'2020-12-31'::date ,'1 month') as series1
        from plan1
 	   left join customers c using (customer_id)
        group by 1),
-        
+       
+ -- This code generate date for customers with plan journey 1,2       
 p2 as (select customer_id, series1 
        from( select *, 
        row_number() over(partition by customer_id order by series1 ) as rankin
@@ -333,7 +340,7 @@ p2 as (select customer_id, series1
              from plan1or2
              left join customers c using (customer_id)
              group by 1 )x1 )x2 
-             where rankin <> 1
+             --where rankin <> 1
        
        union 
       select customer_id 
@@ -342,7 +349,8 @@ p2 as (select customer_id, series1
              left join customers c using (customer_id)
              group by 1 
              order by 1,2),
-                          
+             
+ -- This code generate date for  customers with plan journey 1,2,3                         
 p3 as (select customer_id, series1
        from( 
          
@@ -378,7 +386,8 @@ p3 as (select customer_id, series1
              left join customers c using (customer_id)
              group by 1 
              order by 1,2),
-        
+ 
+ -- This code remove plan 4 from all customers in plan1234
  p40 as (select customer_id, max(start_date) as mindate , b.maxdate
        from customers 
        
@@ -387,7 +396,8 @@ p3 as (select customer_id, series1
                 group by 1)b using (customer_id)
        where plan_id <>4
        group by 1,3),
-             
+       
+ -- This code generate date for customer in plan1234           
  p4 as (select customer_id 
        ,GENERATE_SERIES(MIN(c.start_date)::date,
                         Max(c.start_date)::date ,
@@ -404,46 +414,46 @@ p3 as (select customer_id, series1
                from p40
                group by 1,2
                order by 1,2),
- df as (   select pkey,customer_id,plan_id,start_date,plan_name,
-   case when price2 is null then price else price2 end as price
-   from(
-   select *,
- 	case when plan_id = 2 and nextid = 1 then price - nextprice   
-         when plan_id = 3 and nextid = 1 then price - nextprice 
-         --when plan_id = 3 and nextid = 2 then price - nextprice 
-         end as price2
- from (select *,
- lag (plan_id) over(partition by customer_id order by start_date) as nextid
- ,lag (price) over (partition by customer_id order by start_date) as nextprice
- from cust2)x1)x2),
+               
+ -- This code create a prevplanid and price using the lag function
+ df as  
+  (select *,
+     lag (plan_id) over(partition by customer_id order by start_date) as prevplanid
+     ,lag (price) over(partition by customer_id order by start_date) as prevprice
+     ,extract(year from start_date)::text || extract(month from start_date)::text as yearmonth
+ from cust2),
  
+ -- This code appends all tables to one 
  df1 as ( select tb1.customer_id,tb1.series1 as paymentdate  
-,tb1.customer_id:: text || tb1.series1:: text as pkey
+			,tb1.customer_id:: text || tb1.series1:: text as pkey,
+		  lag (tb1.series1) over(partition by tb1.customer_id order by tb1.series1) as prevdate
  
  from (      
- select * from p1
- union
- select * from p2
- union 
- select * from p3
- union 
- select * from p4)tb1
+       select * from p1
+       union
+       select * from p2
+       union 
+       select * from p3
+       union 
+       select * from p4)tb1
 
- order by 1,2),
- 
+       order by 1,2),
+ -- This code merge the plans table to our created table
   newdf as (select df1.customer_id as id, df1.paymentdate, df1.pkey, df.plan_id, df.start_date
-  ,df.plan_name, df.price
+          ,df.plan_name, df.price,df.prevprice,df1.prevdate,df.prevplanid,df.yearmonth,
+          extract(year from df1.prevdate)::text || extract(month from df1.prevdate)::text as prevyearmonth
   from df1
  left join df on df1.customer_id = df.customer_id and df1.paymentdate = df.start_date
  order by 1,2),
  
- finaltable as (select *, case when price is null then 
+-- This code fill down missing column using the last non null value 
+ f1 as (select *, case when price is null then 
            (select price 
             from 
             newdf as i 
             where i.id = newdf.id and i.paymentdate < newdf.paymentdate
             and i.price is not null 
-            order by i.paymentdate limit 1) else price end Pric
+            order by i.paymentdate desc limit 1) else price end Pric
             
            , case when plan_name is null then 
            (select plan_name 
@@ -451,7 +461,7 @@ p3 as (select customer_id, series1
             newdf as i 
             where i.id = newdf.id and i.paymentdate < newdf.paymentdate
             and i.price is not null 
-            order by i.paymentdate limit 1) else plan_name end Planname
+            order by i.paymentdate desc limit 1) else plan_name end Planname
             
              , case when plan_id is null then 
            (select plan_id 
@@ -459,9 +469,28 @@ p3 as (select customer_id, series1
             newdf as i 
             where i.id = newdf.id and i.paymentdate < newdf.paymentdate
             and i.price is not null 
-            order by i.paymentdate limit 1) else plan_id end Planid
- from newdf)
+            order by i.paymentdate desc limit 1) else plan_id end Planid
+ from newdf),
  
- select id as customer_id, Planid as plan_id, Planname as plan_name,paymentdate,Pric as Amount
- ,row_number() over(partition by id order by paymentdate) as paymentorder
- from finaltable
+ -- This code create a new price based on danny's request
+ f2 as (select id,paymentdate,planname,planid
+ ,case when planid = 2 and prevplanid = 1 and yearmonth = prevyearmonth then price - prevprice
+       when plan_id = 3 and prevplanid = 1 and yearmonth = prevyearmonth then price - prevprice 
+       else price end price2 
+ from f1),
+ 
+-- This code create a fill down for the new price column  
+ f3 as (select id as customer_id,planid,planname,paymentdate
+
+ , case when price2 is null then 
+           (select price2 
+            from 
+            f2 as i 
+            where i.id = f2.id and i.paymentdate < f2.paymentdate
+            and i.price2 is not null 
+            order by i.paymentdate desc limit 1) else price2 end Amount
+  ,row_number() over(partition by id order by paymentdate) as paymentorder
+ from f2)
+ 
+ select * from f3
+ where customer_id  IN (1,2,15,13,18,19,16,21,33,40,910,911,1000,996,206,219 )
