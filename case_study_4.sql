@@ -149,3 +149,54 @@ cust_last_balance AS (
 
 SELECT (SUM(growth_rate_check)/COUNT(*)::FLOAT)*100
 FROM cust_last_balance;
+
+/*
+C. Data Allocation Challenge
+To test out a few different hypotheses - the Data Bank team wants to run an experiment where different groups of customers would be allocated data using 3 different options:
+
+Option 1: data is allocated based off the amount of money at the end of the previous month
+Option 2: data is allocated on the average amount of money kept in the account in the previous 30 days
+Option 3: data is updated real-time
+For this multi-part challenge question - you have been requested to generate the following data elements to help the Data Bank team estimate how much data will need to be provisioned for each option:
+
+1. running customer balance column that includes the impact each transaction
+2. customer balance at the end of each month
+3. minimum, average and maximum values of the running balance for each customer
+Using all of the data available - how much data would have been required for each option on a monthly basis?
+*/
+
+-- C.1
+WITH customer_balance AS (
+  SELECT *,
+  SUM(txn_amount) OVER (PARTITION BY customer_id ORDER BY month_ ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance
+  FROM (
+    SELECT customer_id,DATE_TRUNC('Month',txn_date) AS month_, SUM(txn_group)AS txn_amount 
+    FROM (
+      SELECT *,
+      CASE WHEN txn_type = 'deposit' THEN txn_amount
+        ELSE -1 * txn_amount END AS txn_group
+        FROM data_bank.Customer_Transactions
+        ORDER BY customer_id, txn_date
+    ) AS update_txn_amount
+    GROUP BY 1,2
+  ) AS monthly_totals
+),
+growth_rates AS (
+  SELECT customer_id, month_, balance, previous_month_balance,
+  -- option 1 data storage
+  CASE WHEN previous_month_balance < 0 THEN 0 ELSE previous_month_balance END AS data_storage,
+  CASE WHEN previous_month_balance IS NULL THEN NULL
+  		WHEN previous_month_balance = 0 THEN balance*100
+  ELSE ROUND(((balance-(previous_month_balance))/ABS(previous_month_balance))*100,1) END AS growth_rate,
+  ROW_NUMBER () OVER (PARTITION BY customer_id ORDER BY month_ DESC) AS balance_index
+  FROM (
+      SELECT *,
+      LAG(balance) OVER (PARTITION BY customer_id ORDER BY month_) AS previous_month_balance
+      FROM customer_balance
+      ) AS add_previous_month_balance
+)
+
+SELECT month_, SUM(data_storage) AS total_data_storage
+FROM growth_rates
+GROUP BY month_
+ORDER BY month_
