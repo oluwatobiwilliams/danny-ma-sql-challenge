@@ -165,7 +165,7 @@ For this multi-part challenge question - you have been requested to generate the
 Using all of the data available - how much data would have been required for each option on a monthly basis?
 */
 
--- C.1
+-- C.1 option 1
 WITH customer_balance AS (
   SELECT *,
   SUM(txn_amount) OVER (PARTITION BY customer_id ORDER BY month_ ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance
@@ -200,3 +200,33 @@ SELECT month_, SUM(data_storage) AS total_data_storage
 FROM growth_rates
 GROUP BY month_
 ORDER BY month_
+
+
+-- C.2 option 2
+WITH customer_txn AS (
+  SELECT *,
+  CASE WHEN txn_type = 'deposit' THEN txn_amount
+  ELSE -1 * txn_amount END AS txn_group
+  FROM data_bank.customer_transactions
+ ),
+customer_date_series AS (
+  SELECT customer_id,
+  GENERATE_SERIES(first_date, last_date, '1 day') AS date_series
+  FROM (
+    SELECT customer_id, MIN(txn_date) AS first_date, MAX(txn_date) AS last_date
+    FROM customer_txn
+    GROUP BY customer_id
+  )  AS generate_min_max
+)
+
+SELECT *, 
+SUM(txn_group) OVER (PARTITION BY customer_id ORDER BY date_series) AS txn_cf
+FROM (
+  SELECT s.customer_id, date_series, txn_group,
+  COUNT(txn_group) OVER (PARTITION BY s.customer_id ORDER BY date_series) AS txn_count
+  FROM customer_date_series s
+  LEFT JOIN customer_txn b ON s.customer_id = b.customer_id AND s.date_series = b.txn_date 
+  ORDER BY s.customer_id, date_series
+) AS generate_txn_count
+LIMIT 400
+
