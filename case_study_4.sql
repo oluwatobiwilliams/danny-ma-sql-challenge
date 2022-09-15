@@ -217,16 +217,87 @@ customer_date_series AS (
     FROM customer_txn
     GROUP BY customer_id
   )  AS generate_min_max
+),
+customer_balance AS (
+  SELECT *, 
+  SUM(txn_group) OVER (PARTITION BY customer_id ORDER BY date_series) AS balance
+  FROM (
+    SELECT s.customer_id, date_series, txn_group,
+    COUNT(txn_group) OVER (PARTITION BY s.customer_id ORDER BY date_series) AS txn_count
+    FROM customer_date_series s
+    LEFT JOIN customer_txn b ON s.customer_id = b.customer_id AND s.date_series = b.txn_date 
+    ORDER BY s.customer_id, date_series
+  ) AS generate_txn_count
+),
+customer_data AS (
+  SELECT customer_id, date_series,
+  CASE WHEN txn_row < 30 THEN NULL 
+      WHEN avg_last_30 < 0 THEN 0
+      ELSE avg_last_30 END AS data_storage
+  FROM (
+    SELECT *,
+    AVG(balance) OVER (PARTITION BY customer_id ORDER BY date_series ROWS BETWEEN 30 PRECEDING AND CURRENT ROW) AS avg_last_30,
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date_series) AS txn_row
+    FROM customer_balance
+  ) AS tmp
 )
-
-SELECT *, 
-SUM(txn_group) OVER (PARTITION BY customer_id ORDER BY date_series) AS txn_cf
+SELECT month, ROUND(SUM(data_allocation),1) AS total_allocation
 FROM (
-  SELECT s.customer_id, date_series, txn_group,
-  COUNT(txn_group) OVER (PARTITION BY s.customer_id ORDER BY date_series) AS txn_count
-  FROM customer_date_series s
-  LEFT JOIN customer_txn b ON s.customer_id = b.customer_id AND s.date_series = b.txn_date 
-  ORDER BY s.customer_id, date_series
-) AS generate_txn_count
-LIMIT 400
+  SELECT customer_id, 
+  DATE_TRUNC('month', date_series) AS month, 
+  MAX(data_storage) AS data_allocation 
+  FROM customer_data 
+  GROUP BY customer_id, month
+) AS tmp
+GROUP BY month ORDER BY month;
+
+-- C.3 option 3
+WITH customer_txn AS (
+  SELECT *,
+  CASE WHEN txn_type = 'deposit' THEN txn_amount
+  ELSE -1 * txn_amount END AS txn_group
+  FROM data_bank.customer_transactions
+ ),
+customer_date_series AS (
+  SELECT customer_id,
+  GENERATE_SERIES(first_date, last_date, '1 day') AS date_series
+  FROM (
+    SELECT customer_id, MIN(txn_date) AS first_date, MAX(txn_date) AS last_date
+    FROM customer_txn
+    GROUP BY customer_id
+  )  AS generate_min_max
+),
+customer_balance AS (
+  SELECT *, 
+  -- fill down customer balance
+  SUM(txn_group) OVER (PARTITION BY customer_id ORDER BY date_series) AS balance
+  FROM (
+    SELECT s.customer_id, date_series, txn_group
+    FROM customer_date_series s
+    LEFT JOIN customer_txn b ON s.customer_id = b.customer_id AND s.date_series = b.txn_date 
+    ORDER BY s.customer_id, date_series
+  ) AS generate_txn_count
+),
+customer_data AS (
+  SELECT customer_id, date_series,
+  CASE 
+      WHEN balance < 0 THEN 0
+      ELSE balance END AS data_storage
+  FROM customer_balance
+)
+SELECT month, ROUND(SUM(data_allocation),1) AS total_allocation
+FROM (
+  SELECT customer_id, 
+  DATE_TRUNC('month', date_series) AS month, 
+  MAX(data_storage) AS data_allocation 
+  FROM customer_data 
+  GROUP BY customer_id, month
+) AS tmp
+GROUP BY month ORDER BY month;
+
+/*
+--Inference
+Based on the above, option 3 which proposes to allocate data to customers using real time account balances
+would require the most data storage to be provisioned on a monthly basis, followed by option 2, then option 1.
+*/
 
