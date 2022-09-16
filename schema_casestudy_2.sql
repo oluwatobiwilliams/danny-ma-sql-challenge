@@ -68,6 +68,23 @@ VALUES
   ('9', '2', 'null', 'null', 'null', 'Customer Cancellation'),
   ('10', '1', '2020-01-11 18:50:20', '10km', '10minutes', 'null');
 
+DROP TABLE IF EXISTS order_ratings;
+CREATE TABLE order_ratings (
+  "rating_id" SERIAL PRIMARY KEY,
+  "order_id" INTEGER,
+  "rating" INTEGER CHECK (rating>0 AND rating<6)
+);
+INSERT INTO order_ratings
+  ("order_id", "rating")
+VALUES
+  (1, 4),
+  (2, 2),
+  (3, 1),
+  (4, 5),
+  (5, 5),
+  (7, 3),
+  (8, 2),
+  (10, 4);
 
 DROP TABLE IF EXISTS pizza_names;
 CREATE TABLE pizza_names (
