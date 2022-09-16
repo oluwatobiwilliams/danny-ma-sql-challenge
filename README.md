@@ -3,6 +3,8 @@ Feel free to join our study group on WhatsApp- https://chat.whatsapp.com/H13DoPO
 
 To follow along, the database and code editor for the case studies can be found here:
 
-1. Case study #1: Danny's Diner  - https://www.db-fiddle.com/f/2rM8RAnq7h5LLDTzZiRWcd/138 
-2. Case study #2: Pizza Runner - https://www.db-fiddle.com/f/7VcQKQwsS3CTkGRFG7vu98/65
-3. Case study #3: Foodie Fi - https://www.db-fiddle.com/f/rHJhRrXy5hbVBNJ6F6b9gJ/16
+1. Case study #1: Danny's Diner  - https://8weeksqlchallenge.com/case-study-1/ 
+2. Case study #2: Pizza Runner - https://8weeksqlchallenge.com/case-study-2/
+3. Case study #3: Foodie Fi - https://8weeksqlchallenge.com/case-study-3/
+4. Case study #4: Data Bank - https://8weeksqlchallenge.com/case-study-4/
+5. Case study #5: Data Mart - https://8weeksqlchallenge.com/case-study-5/
