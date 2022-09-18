@@ -153,7 +153,7 @@ GROUP BY 1 ORDER BY 2 DESC;
 
 -- 2.i
 -- We can't use the avg_transaction column as that would be averaging an averaged value
--- which is misleading
+-- which is misleading in this case
 SELECT *,
 shopify_sales/shopify_txn AS shopify_avg_transaction,
 retail_sales/retail_txn AS retail_avg_transaction
@@ -167,4 +167,276 @@ FROM (
 	GROUP BY year 
 ) AS sales_split
 ;
+
+/*
+3. Before & After Analysis
+This technique is usually used when we inspect an important event and want to inspect the impact before and after a certain point in time.
+
+Taking the week_date value of 2020-06-15 as the baseline week where the Data Mart sustainable packaging changes came into effect.
+
+We would include all week_date values for 2020-06-15 as the start of the period after the change and the previous week_date values would be before
+
+Using this analysis approach - answer the following questions:
+
+1. What is the total sales for the 4 weeks before and after 2020-06-15? What is the growth or reduction rate in actual values and percentage of sales?
+2. What about the entire 12 weeks before and after?
+3. How do the sale metrics for these 2 periods before and after compare with the previous years in 2018 and 2019?
+*/
+
+-- 3.1 version 1
+SELECT before_effect,
+after_effect,
+after_effect - before_effect AS change,
+ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+FROM 
+(
+	SELECT SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 4 THEN sales END) AS after_effect,
+	SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -3 AND 0 THEN sales END) AS before_effect
+	FROM
+	(
+		SELECT week_date,
+		ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+		sales 
+		FROM cleaned_weekly_sales
+	) add_delta_weeks
+) AS add_before_after
+;
+
+-- 3.1 version 2
+SELECT before_effect,
+after_effect,
+after_effect - before_effect AS change,
+ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+FROM (
+	SELECT SUM(CASE WHEN week_date BETWEEN '2020-05-18' AND '2020-06-08' THEN sales END) AS before_effect,
+	SUM(CASE WHEN week_date BETWEEN '2020-06-15' AND '2020-07-06' THEN sales END) AS after_effect
+	FROM (
+		SELECT week_date,
+		sales 
+		FROM cleaned_weekly_sales
+		WHERE week_date BETWEEN '2020-06-15'::DATE - INTERVAL '4 week' 
+		AND '2020-06-15'::DATE + INTERVAL '3 week'
+		ORDER BY week_date 
+	) AS add_delta_weeks
+) AS generate_before_after
+;
+
+-- 3.2 
+SELECT before_effect,
+after_effect,
+after_effect - before_effect AS change,
+ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+FROM 
+(
+	SELECT SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 12 THEN sales END) AS after_effect,
+	SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -11 AND 0 THEN sales END) AS before_effect
+	FROM
+	(
+		SELECT week_date,
+		ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+		sales 
+		FROM cleaned_weekly_sales
+	) add_delta_weeks
+) AS add_before_after
+;
+
+-- 3.3 For 4 weeks before and after
+SELECT before_effect,
+after_effect,
+after_effect - before_effect AS change,
+ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change,
+'2018' AS year
+FROM 
+(
+	SELECT SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 4 THEN sales END) AS after_effect,
+	SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -3 AND 0 THEN sales END) AS before_effect
+	FROM
+	(
+		SELECT week_date,
+		ROUND((week_date - '2018-06-15'::DATE)/7.0)+1 AS delta_weeks,
+		sales 
+		FROM cleaned_weekly_sales
+	) add_delta_weeks
+) AS add_before_after
+
+UNION ALL 
+
+SELECT before_effect,
+after_effect,
+after_effect - before_effect AS change,
+ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change,
+'2019' AS year
+FROM 
+(
+	SELECT SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 4 THEN sales END) AS after_effect,
+	SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -3 AND 0 THEN sales END) AS before_effect
+	FROM
+	(
+		SELECT week_date,
+		ROUND((week_date - '2019-06-15'::DATE)/7.0)+1 AS delta_weeks,
+		sales 
+		FROM cleaned_weekly_sales
+	) add_delta_weeks
+) AS add_before_after
+
+UNION ALL
+
+SELECT before_effect,
+after_effect,
+after_effect - before_effect AS change,
+ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change,
+'2020' AS year
+FROM 
+(
+	SELECT SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 4 THEN sales END) AS after_effect,
+	SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -3 AND 0 THEN sales END) AS before_effect
+	FROM
+	(
+		SELECT week_date,
+		ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+		sales 
+		FROM cleaned_weekly_sales
+	) add_delta_weeks
+) AS add_before_after
+;
+
+/*
+4. Bonus Question
+Which areas of the business have the highest negative impact in sales metrics performance in 2020 for the 12 week before and after period?
+
+region
+platform
+age_band
+demographic
+customer_type
+Do you have any further recommendations for Danny’s team at Data Mart or any interesting insights based off this analysis?
+*/
+
+SELECT metric, AVG(percent_change) AS  avg_percent_change
+FROM (
+	SELECT 'region' AS metric,
+	LOWER(region) AS value,
+	before_effect,
+	after_effect,
+	after_effect - before_effect AS change,
+	ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+	FROM 
+	(
+		SELECT region,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 12 THEN sales END) AS after_effect,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -11 AND 0 THEN sales END) AS before_effect
+		FROM
+		(
+			SELECT region,
+			week_date,
+			ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+			sales 
+			FROM cleaned_weekly_sales
+		) add_delta_weeks
+		GROUP BY region
+	) AS add_before_after
+	
+	UNION ALL 
+	
+	SELECT 'platform' AS metric,
+	LOWER(platform) AS value,
+	before_effect,
+	after_effect,
+	after_effect - before_effect AS change,
+	ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+	FROM 
+	(
+		SELECT platform,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 12 THEN sales END) AS after_effect,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -11 AND 0 THEN sales END) AS before_effect
+		FROM
+		(
+			SELECT platform,
+			week_date,
+			ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+			sales 
+			FROM cleaned_weekly_sales
+		) add_delta_weeks
+		GROUP BY platform
+	) AS add_before_after
+	
+	UNION ALL 
+	
+	SELECT 'age_band' AS metric,
+	LOWER(age_band) AS value,
+	before_effect,
+	after_effect,
+	after_effect - before_effect AS change,
+	ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+	FROM 
+	(
+		SELECT age_band,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 12 THEN sales END) AS after_effect,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -11 AND 0 THEN sales END) AS before_effect
+		FROM
+		(
+			SELECT age_band,
+			week_date,
+			ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+			sales 
+			FROM cleaned_weekly_sales
+		) add_delta_weeks
+		GROUP BY age_band
+	) AS add_before_after
+	
+	UNION ALL 
+	
+	SELECT 'demographic' AS metric,
+	LOWER(demographic) AS value,
+	before_effect,
+	after_effect,
+	after_effect - before_effect AS change,
+	ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+	FROM 
+	(
+		SELECT demographic,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 12 THEN sales END) AS after_effect,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -11 AND 0 THEN sales END) AS before_effect
+		FROM
+		(
+			SELECT demographic,
+			week_date,
+			ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+			sales 
+			FROM cleaned_weekly_sales
+		) add_delta_weeks
+		GROUP BY demographic
+	) AS add_before_after
+	
+	UNION ALL 
+	
+	SELECT 'customer_type' AS metric,
+	LOWER(customer_type) AS value,
+	before_effect,
+	after_effect,
+	after_effect - before_effect AS change,
+	ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
+	FROM 
+	(
+		SELECT customer_type,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 12 THEN sales END) AS after_effect,
+		SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -11 AND 0 THEN sales END) AS before_effect
+		FROM
+		(
+			SELECT customer_type,
+			week_date,
+			ROUND((week_date - '2020-06-15'::DATE)/7.0)+1 AS delta_weeks,
+			sales 
+			FROM cleaned_weekly_sales
+		) add_delta_weeks
+		GROUP BY customer_type
+	) AS add_before_after
+) AS tmp
+GROUP BY metric
+ORDER BY avg_percent_change
+;
+-- Having observed the change before and after 12 weeks, it was observed that demographic and age_band
+-- had the highest negative impact on sales performance. Further breakdown shows that the unknown segments
+-- in demographic and age_band had the highest negative impact on sales.
+
 
