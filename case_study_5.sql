@@ -190,8 +190,8 @@ after_effect - before_effect AS change,
 ROUND(((after_effect/before_effect::NUMERIC) - 1)*100,2) AS percent_change
 FROM 
 (
-	SELECT SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN 1 AND 4 THEN sales END) AS after_effect,
-	SUM(CASE WHEN delta_weeks::NUMERIC BETWEEN -3 AND 0 THEN sales END) AS before_effect
+	SELECT SUM(CASE WHEN delta_weeks::INTEGER BETWEEN 1 AND 4 THEN sales END) AS after_effect,
+	SUM(CASE WHEN delta_weeks::INTEGER BETWEEN -3 AND 0 THEN sales END) AS before_effect
 	FROM
 	(
 		SELECT week_date,
