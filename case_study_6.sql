@@ -74,3 +74,91 @@ FROM (
   GROUP BY user_id 
 ) AS group_users
 ;
+
+-- 2.3
+SELECT month, SUM(unique_visits) AS total_unique_visits 
+FROM (
+	SELECT user_id, DATE_TRUNC('month', event_time) AS month, COUNT(DISTINCT visit_id) AS unique_visits  
+	FROM (
+		SELECT e.*, u.user_id 
+		FROM clique_bait.events e
+		LEFT JOIN clique_bait.users u ON e.event_time::DATE >= u.start_date::DATE
+		AND e.cookie_id = u.cookie_id
+	) AS add_user_id
+	GROUP BY user_id, month
+) AS get_unique_visits
+GROUP BY 1
+ORDER BY 1
+;
+
+-- 2.4
+SELECT event_type,
+COUNT(*) AS no_of_events
+FROM clique_bait.events e 
+GROUP BY event_type 
+ORDER BY no_of_events DESC
+;
+
+-- 2.5
+SELECT COUNT(CASE WHEN event_type = 3 THEN visit_id END) AS purchase_event,
+COUNT(*) AS total_events,
+ROUND((COUNT(CASE WHEN event_type = 3 THEN visit_id END)/COUNT(*)::NUMERIC)*100,2) AS percent_purchase_event
+FROM clique_bait.events
+;
+
+-- 2.6
+SELECT *, ROUND((checkout_no_purchase/total_visits::NUMERIC)*100,2) AS percentage_checkout_no_purchase
+FROM (
+	SELECT COUNT(CASE WHEN page_journey ~ '12' AND page_journey !~ '13' THEN visit_id END) AS checkout_no_purchase,
+	COUNT(*) AS total_visits
+	FROM (
+		SELECT visit_id, STRING_AGG(page_id::TEXT, ',') AS page_journey, STRING_AGG(event_type::TEXT,',') AS events_fired  
+		FROM clique_bait.events
+		GROUP BY visit_id
+	) AS generate_customer_journey
+) AS count_checkout_no_purchase
+;
+
+-- 2.7
+SELECT page_id, COUNT(*) AS no_of_views
+FROM clique_bait.events e
+WHERE event_type = 1
+GROUP BY page_id 
+ORDER BY no_of_views DESC LIMIT 3
+;
+
+-- 2.8
+SELECT product_category,
+COUNT(CASE WHEN event_type = 1 THEN 1 END) AS page_views,
+COUNT(CASE WHEN event_type = 2 THEN 1 END) AS cart_adds
+FROM (
+	SELECT page_id, product_category, event_type 
+	FROM clique_bait.events e
+	LEFT JOIN clique_bait.page_hierarchy ph USING (page_id)
+) AS get_product_category
+WHERE product_category IS NOT NULL 
+GROUP BY product_category
+;
+
+-- 2.9
+WITH purchases AS (
+	SELECT visit_id 
+	FROM (
+		SELECT visit_id, STRING_AGG(page_id::TEXT, ',') AS page_journey  
+		FROM clique_bait.events
+		GROUP BY visit_id	
+	) AS generate_user_journey
+	WHERE page_journey ~ '13'
+)
+SELECT product_id, page_name, COUNT(*) AS no_of_purchases
+FROM (
+	SELECT page_id, page_name, product_id, product_category, event_type 
+	FROM clique_bait.events e
+	LEFT JOIN clique_bait.page_hierarchy ph USING (page_id)
+	WHERE visit_id IN (SELECT visit_id FROM purchases)
+) AS add_product_id
+WHERE event_type = 2
+GROUP BY product_id, page_name
+ORDER BY no_of_purchases DESC 
+LIMIT 3
+;
