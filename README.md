@@ -8,3 +8,4 @@ To follow along, the database and code editor for the case studies can be found 
 3. Case study #3: Foodie Fi - https://8weeksqlchallenge.com/case-study-3/
 4. Case study #4: Data Bank - https://8weeksqlchallenge.com/case-study-4/
 5. Case study #5: Data Mart - https://8weeksqlchallenge.com/case-study-5/
+6. Case study #6: Clique Bait - https://8weeksqlchallenge.com/case-study-6/
