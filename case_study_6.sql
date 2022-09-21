@@ -51,15 +51,15 @@ REF: clique_bait.events.(cookie_id, event_time) > clique_bait.users.(cookie_id, 
 2. Digital Analysis
 Using the available datasets - answer the following questions using a single query for each one:
 
-How many users are there?
-How many cookies does each user have on average?
-What is the unique number of visits by all users per month?
-What is the number of events for each event type?
-What is the percentage of visits which have a purchase event?
-What is the percentage of visits which view the checkout page but do not have a purchase event?
-What are the top 3 pages by number of views?
-What is the number of views and cart adds for each product category?
-What are the top 3 products by purchases?
+1. How many users are there?
+2. How many cookies does each user have on average?
+3. What is the unique number of visits by all users per month?
+4. What is the number of events for each event type?
+5. What is the percentage of visits which have a purchase event?
+6. What is the percentage of visits which view the checkout page but do not have a purchase event?
+7. What are the top 3 pages by number of views?
+8. What is the number of views and cart adds for each product category?
+9. What are the top 3 products by purchases?
 */
 
 -- 2.1
@@ -161,4 +161,108 @@ WHERE event_type = 2
 GROUP BY product_id, page_name
 ORDER BY no_of_purchases DESC 
 LIMIT 3
+;
+
+
+/*
+3. Product Funnel Analysis
+Using a single SQL query - create a new output table which has the following details:
+
+1. How many times was each product viewed?
+2. How many times was each product added to cart?
+3. How many times was each product added to a cart but not purchased (abandoned)?
+4. How many times was each product purchased?
+5. Additionally, create another table which further aggregates the data for the above points but this time for each product category instead of individual products.
+
+Use your 2 new output tables - answer the following questions:
+
+6. Which product had the most views, cart adds and purchases?
+7. Which product was most likely to be abandoned?
+8. Which product had the highest view to purchase percentage?
+9. What is the average conversion rate from view to cart add?
+10. What is the average conversion rate from cart add to purchase?
+*/
+
+-- 3.1 - 3.4
+WITH abandoned AS (
+	SELECT visit_id
+	FROM (
+		SELECT visit_id, STRING_AGG(page_id::TEXT, ',') AS page_journey  
+		FROM clique_bait.events
+		GROUP BY visit_id	
+	) AS generate_user_journey
+	WHERE page_journey ~ '12' AND page_journey !~ '13'
+),
+purchases AS (
+	SELECT visit_id 
+	FROM (
+		SELECT visit_id, STRING_AGG(page_id::TEXT, ',') AS page_journey  
+		FROM clique_bait.events
+		GROUP BY visit_id	
+	) AS generate_user_journey
+	WHERE page_journey ~ '13'
+)
+
+SELECT product_id, page_name, 
+COUNT (CASE WHEN event_type = 1 THEN 1 END) AS total_page_views,
+COUNT (CASE WHEN event_type = 2 THEN 1 END) AS total_add_to_cart,
+COUNT (CASE WHEN event_type = 2 AND visit_id IN (SELECT visit_id FROM abandoned) THEN 1 END) AS abandoned_add_to_cart,
+COUNT (CASE WHEN visit_id IN (SELECT visit_id FROM purchases) AND event_type NOT IN (1,4,5) THEN 1 END) AS purchased_product
+FROM (
+	SELECT visit_id, page_name, product_id, event_type 
+	FROM clique_bait.events e
+	LEFT JOIN clique_bait.page_hierarchy ph USING (page_id)
+) AS joined_table
+WHERE product_id IS NOT NULL
+GROUP BY product_id, page_name 
+ORDER BY purchased_product DESC
+;
+
+-- 3.5 to 3.9
+-- Lobster: product with most views, cart adds and purchases
+-- Abalone: most likely to be abandoned; a shellfish
+-- Lobster: highest purchase-to-view percentage at 48.74%; Russian Caviar is the exact opposite.
+WITH abandoned AS (
+	SELECT visit_id
+	FROM (
+		SELECT visit_id, STRING_AGG(page_id::TEXT, ',') AS page_journey  
+		FROM clique_bait.events
+		GROUP BY visit_id	
+	) AS generate_user_journey
+	WHERE page_journey ~ '12' AND page_journey !~ '13'
+),
+purchases AS (
+	SELECT visit_id 
+	FROM (
+		SELECT visit_id, STRING_AGG(page_id::TEXT, ',') AS page_journey  
+		FROM clique_bait.events
+		GROUP BY visit_id	
+	) AS generate_user_journey
+	WHERE page_journey ~ '13'
+)
+SELECT 
+ROUND(AVG(cart_adds_to_views),2) AS average_cart_adds_to_views,
+ROUND(AVG(purchased_from_add_to_cart),2) AS average_purchased_from_add_to_cart
+FROM ( 
+	SELECT *,
+	ROUND((purchased_product / total_page_views::NUMERIC)*100,2) AS purchase_to_view_percentage,
+	(total_add_to_cart / total_page_views::NUMERIC)*100 AS cart_adds_to_views,
+	(purchased_product / total_add_to_cart::NUMERIC)*100 AS purchased_from_add_to_cart
+	FROM (
+		SELECT product_id, page_name, 
+		COUNT (CASE WHEN event_type = 1 THEN 1 END) AS total_page_views,
+		COUNT (CASE WHEN event_type = 2 THEN 1 END) AS total_add_to_cart,
+		COUNT (CASE WHEN event_type = 2 AND visit_id IN (SELECT visit_id FROM abandoned) THEN 1 END) AS abandoned_add_to_cart,
+		COUNT (CASE WHEN visit_id IN (SELECT visit_id FROM purchases) AND event_type NOT IN (1,4,5) THEN 1 END) AS purchased_product
+		FROM (
+			SELECT visit_id, page_name, product_id, event_type 
+			FROM clique_bait.events e
+			LEFT JOIN clique_bait.page_hierarchy ph USING (page_id)
+		) AS joined_table
+		WHERE product_id IS NOT NULL
+		GROUP BY product_id, page_name 
+		ORDER BY purchased_product DESC
+	) AS generate_metrics
+	ORDER BY purchase_to_view_percentage DESC 
+) AS add_additional_metrics
 ;
