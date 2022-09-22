@@ -253,7 +253,7 @@ FROM (
 		COUNT (CASE WHEN event_type = 1 THEN 1 END) AS total_page_views,
 		COUNT (CASE WHEN event_type = 2 THEN 1 END) AS total_add_to_cart,
 		COUNT (CASE WHEN event_type = 2 AND visit_id IN (SELECT visit_id FROM abandoned) THEN 1 END) AS abandoned_add_to_cart,
-		COUNT (CASE WHEN visit_id IN (SELECT visit_id FROM purchases) AND event_type NOT IN (1,4,5) THEN 1 END) AS purchased_product
+		COUNT (CASE WHEN visit_id IN (SELECT visit_id FROM purchases) AND event_type = 2 THEN 1 END) AS purchased_product
 		FROM (
 			SELECT visit_id, page_name, product_id, event_type 
 			FROM clique_bait.events e
@@ -265,4 +265,53 @@ FROM (
 	) AS generate_metrics
 	ORDER BY purchase_to_view_percentage DESC 
 ) AS add_additional_metrics
+;
+
+/*
+3. Campaigns Analysis
+Generate a table that has 1 single row for every unique visit_id record and has the following columns:
+
+user_id
+visit_id
+visit_start_time: the earliest event_time for each visit
+page_views: count of page views for each visit
+cart_adds: count of product cart add events for each visit
+purchase: 1/0 flag if a purchase event exists for each visit
+campaign_name: map the visit to a campaign if the visit_start_time falls between the start_date and end_date
+impression: count of ad impressions for each visit
+click: count of ad clicks for each visit
+(Optional column) cart_products: a comma separated text value with products added to the cart sorted by the order they were added to the cart (hint: use the sequence_number)
+*/
+
+SELECT visit_id,
+user_id,
+visit_start_time,
+page_views,
+cart_adds,
+purchase_flag,
+campaign_name,
+ad_impressions,
+ad_clicks,
+cart_products
+FROM (
+	SELECT visit_id, 
+	MIN(user_id) AS user_id, 
+	MIN(event_time) AS visit_start_time,
+	COUNT(CASE WHEN event_type = 1 THEN 1 END) AS page_views,
+	COUNT(CASE WHEN event_type = 2 THEN 1 END) AS cart_adds,
+	MAX(CASE WHEN event_type = 3 THEN 1 ELSE 0 END) AS purchase_flag,
+	COUNT(CASE WHEN event_type = 4 THEN 1 END) AS ad_impressions,
+	COUNT(CASE WHEN event_type = 5 THEN 1 END) AS ad_clicks,
+	STRING_AGG(CASE WHEN event_type = 2 THEN product_id::TEXT END, ',') AS cart_products
+	FROM (
+		SELECT visit_id, user_id, e.cookie_id, page_id, product_id, event_type, sequence_number, event_time 
+		FROM clique_bait.events e
+		LEFT JOIN clique_bait.users u ON e.cookie_id = u.cookie_id
+		AND e.event_time::DATE >= u.start_date 
+		LEFT JOIN clique_bait.page_hierarchy ph USING (page_id)
+	) AS joined_tables
+	GROUP BY visit_id
+) AS tmp
+LEFT JOIN clique_bait.campaign_identifier ci ON tmp.visit_start_time >= ci.start_date
+AND tmp.visit_start_time <= ci.end_date 
 ;
